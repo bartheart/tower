@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import AuthScreen from './src/screens/AuthScreen';
 import { supabase } from './src/supabase/client';
 import {
   registerPushToken,
@@ -17,14 +18,6 @@ import type { Session } from '@supabase/supabase-js';
 
 const Tab = createBottomTabNavigator();
 
-function AuthScreen() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: '#f8fafc', fontSize: 20, fontWeight: '300' }}>Tower</Text>
-      <Text style={{ color: '#64748b', marginTop: 8 }}>Sign in to continue</Text>
-    </View>
-  );
-}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -65,7 +58,11 @@ export default function App() {
     );
   }
 
-  if (!session) return <AuthScreen />;
+  if (!session) return (
+    <SafeAreaProvider>
+      <AuthScreen />
+    </SafeAreaProvider>
+  );
 
   return (
     <SafeAreaProvider>
