@@ -7,15 +7,17 @@ import { supabase } from '../supabase/client';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 
-export async function registerPushToken() {
+export async function registerPushToken(userId: string) {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== 'granted') return;
 
-  const token = (await Notifications.getExpoPushTokenAsync()).data;
+  const token = (await Notifications.getExpoPushTokenAsync({
+    projectId: '91e461dd-f379-4f2d-9a69-72b76f755076',
+  })).data;
 
   await supabase
     .from('app_preferences')
-    .upsert({ expo_push_token: token }, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, expo_push_token: token }, { onConflict: 'user_id' });
 }
 
 export async function syncStaleItems() {

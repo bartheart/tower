@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBudgets } from '../hooks/useBudgets';
 import { useGoals } from '../hooks/useGoals';
 import { useCurrentMonthTransactions, useMonthlyIncome, useMonthlySpend } from '../hooks/useTransactions';
@@ -19,6 +20,7 @@ function ProgressBar({ ratio, color }: { ratio: number; color: string }) {
 }
 
 export default function PlanScreen() {
+  const { top } = useSafeAreaInsets();
   const budgets = useBudgets();
   const goals = useGoals();
   const transactions = useCurrentMonthTransactions();
@@ -32,7 +34,7 @@ export default function PlanScreen() {
   const projectedRemaining = income - projectedSpend;
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content}>
+    <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
       {/* Projection banner */}
       <View style={s.projectionCard}>
         <Text style={s.sectionLabel}>END OF MONTH PROJECTION</Text>

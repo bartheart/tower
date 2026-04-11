@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlaidLink, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
 import { fetchLinkToken } from '../plaid/linkToken';
 import { exchangePublicToken } from '../plaid/exchangeToken';
@@ -10,6 +11,7 @@ import { useAccounts } from '../hooks/useTransactions';
 import { signOut } from '../supabase/client';
 
 export default function SettingsScreen() {
+  const { top } = useSafeAreaInsets();
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const accounts = useAccounts();
@@ -60,7 +62,7 @@ export default function SettingsScreen() {
   }, []);
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content}>
+    <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
       <Text style={s.sectionLabel}>LINKED ACCOUNTS</Text>
 
       {institutions.map(name => (
@@ -88,7 +90,10 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       )}
 
-      <TouchableOpacity style={s.signOutButton} onPress={signOut}>
+      <TouchableOpacity
+        style={s.signOutButton}
+        onPress={() => signOut().catch(() => Alert.alert('Error', 'Could not sign out. Try again.'))}
+      >
         <Text style={s.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>

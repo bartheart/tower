@@ -20,7 +20,7 @@ const Tab = createBottomTabNavigator();
 function AuthScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: '#f8fafc', fontSize: 20, fontWeight: '300' }}>Budget</Text>
+      <Text style={{ color: '#f8fafc', fontSize: 20, fontWeight: '300' }}>Tower</Text>
       <Text style={{ color: '#64748b', marginTop: 8 }}>Sign in to continue</Text>
     </View>
   );
@@ -45,7 +45,7 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    registerPushToken();
+    registerPushToken(session.user.id);
     syncStaleItems();
 
     const notifSub = setupNotificationHandler();
