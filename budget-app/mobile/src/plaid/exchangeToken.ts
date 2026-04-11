@@ -2,9 +2,7 @@ import { supabase } from '../supabase/client';
 
 const EDGE_FN_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
 
-export async function exchangePublicToken(
-  publicToken: string
-): Promise<{ accessToken: string; itemId: string }> {
+export async function exchangePublicToken(publicToken: string): Promise<{ itemId: string }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
@@ -19,5 +17,5 @@ export async function exchangePublicToken(
 
   if (!response.ok) throw new Error('Failed to exchange token');
   const data = await response.json();
-  return { accessToken: data.access_token, itemId: data.item_id };
+  return { itemId: data.item_id };
 }

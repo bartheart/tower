@@ -1,7 +1,11 @@
 import { Q } from '@nozbe/watermelondb';
 import PlaidItem from '../db/models/PlaidItem';
 import Transaction from '../db/models/Transaction';
+import Account from '../db/models/Account';
 import { database } from '../db';
+import { supabase } from '../supabase/client';
+
+const EDGE_FN_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
 
 const PLAID_CATEGORY_MAP: Record<string, string> = {
   'FOOD_AND_DRINK': 'Food and Drink',
@@ -40,28 +44,34 @@ interface PlaidTransaction {
   pending: boolean;
 }
 
+async function getSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  return session;
+}
+
 export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
+  const session = await getSession();
   let cursor = plaidItem.cursor ?? '';
   let hasMore = true;
 
   while (hasMore) {
-    const response = await fetch('https://sandbox.plaid.com/transactions/sync', {
+    const response = await fetch(`${EDGE_FN_URL}/sync-transactions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: JSON.stringify({
-        client_id: process.env.EXPO_PUBLIC_PLAID_CLIENT_ID,
-        secret: process.env.EXPO_PUBLIC_PLAID_SECRET,
-        access_token: plaidItem.accessToken,
+        item_id: plaidItem.itemId,
         cursor,
-        count: 100,
       }),
     });
 
-    if (!response.ok) throw new Error('Plaid sync failed');
+    if (!response.ok) throw new Error('Sync failed');
     const data = await response.json();
 
     await database.write(async () => {
-      // Add new transactions
       for (const txn of data.added as PlaidTransaction[]) {
         await database.get<Transaction>('transactions').create(t => {
           t.plaidTransactionId = txn.transaction_id;
@@ -75,7 +85,6 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
         });
       }
 
-      // Remove deleted transactions
       for (const removed of data.removed) {
         const existing = await database.get<Transaction>('transactions')
           .query(Q.where('plaid_transaction_id', removed.transaction_id))
@@ -83,7 +92,6 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
         if (existing.length > 0) await existing[0].destroyPermanently();
       }
 
-      // Update cursor on the PlaidItem
       await plaidItem.update(item => { item.cursor = data.next_cursor; });
     });
 
@@ -99,4 +107,21 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
 export async function syncAllItems(): Promise<void> {
   const items = await database.get<PlaidItem>('plaid_items').query().fetch();
   await Promise.all(items.map(item => syncTransactions(item)));
+}
+
+/**
+ * One-time startup migration: blank any access_tokens still sitting
+ * in SQLite from before the Vault migration. Safe to call on every launch —
+ * it only writes if it finds non-empty values.
+ */
+export async function migrateAccessTokens(): Promise<void> {
+  const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+  const stale = items.filter(i => i.accessToken && i.accessToken.length > 0);
+  if (stale.length === 0) return;
+
+  await database.write(async () => {
+    for (const item of stale) {
+      await item.update(i => { i.accessToken = ''; });
+    }
+  });
 }

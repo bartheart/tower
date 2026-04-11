@@ -28,17 +28,14 @@ describe('Plaid link flow', () => {
     );
   });
 
-  it('exchangePublicToken returns access_token and item_id', async () => {
+  it('exchangePublicToken returns only itemId (access_token stored server-side)', async () => {
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({
-        access_token: 'access-sandbox-xxx',
-        item_id: 'item_abc123',
-      }),
+      json: async () => ({ item_id: 'item_abc123' }),
     });
 
     const result = await exchangePublicToken('public-sandbox-token');
-    expect(result.accessToken).toBe('access-sandbox-xxx');
     expect(result.itemId).toBe('item_abc123');
+    expect((result as any).accessToken).toBeUndefined();
   });
 });

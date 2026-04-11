@@ -16,35 +16,41 @@ serve(async (req) => {
   );
   if (authError || !user) return new Response('Unauthorized', { status: 401 });
 
-  const { public_token } = await req.json();
+  const { item_id, cursor } = await req.json();
+  if (!item_id) return new Response('item_id required', { status: 400 });
 
-  const plaidRes = await fetch(`${plaidBaseUrl()}/item/public_token/exchange`, {
+  // Retrieve access_token from vault — verify ownership via user_id
+  const { data: tokenRow, error: tokenError } = await supabase
+    .from('plaid_tokens')
+    .select('access_token')
+    .eq('item_id', item_id)
+    .eq('user_id', user.id)
+    .single();
+
+  if (tokenError || !tokenRow) {
+    return new Response('Token not found', { status: 404 });
+  }
+
+  const plaidRes = await fetch(`${plaidBaseUrl()}/transactions/sync`, {
     method: 'POST',
     headers: plaidHeaders(),
-    body: JSON.stringify({ public_token }),
+    body: JSON.stringify({
+      access_token: tokenRow.access_token,
+      cursor: cursor ?? '',
+      count: 100,
+    }),
   });
 
   const plaidData = await plaidRes.json();
   if (!plaidRes.ok) return new Response(JSON.stringify(plaidData), { status: 502 });
 
-  const { access_token, item_id } = plaidData;
-
-  // Store access_token server-side — never returned to client
-  const { error: upsertError } = await supabase
-    .from('plaid_tokens')
-    .upsert(
-      { user_id: user.id, item_id, access_token },
-      { onConflict: 'item_id' }
-    );
-
-  if (upsertError) {
-    console.error('Failed to store plaid token:', upsertError);
-    return new Response('Failed to store token', { status: 500 });
-  }
-
-  // Return ONLY item_id — access_token stays on server
   return new Response(
-    JSON.stringify({ item_id }),
+    JSON.stringify({
+      added: plaidData.added,
+      removed: plaidData.removed,
+      next_cursor: plaidData.next_cursor,
+      has_more: plaidData.has_more,
+    }),
     { headers: { 'Content-Type': 'application/json' } }
   );
 });
