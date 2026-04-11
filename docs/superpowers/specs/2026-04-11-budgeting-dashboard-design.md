@@ -167,15 +167,15 @@ Modal / stack screens: transaction detail, add/edit budget, add/edit goal, Plaid
 
 ## 10. Effort Estimate
 
-| Phase | Work | Estimate |
+| Phase | Work | Target |
 |---|---|---|
-| 1 | Supabase setup, auth, DB schema, Expo project bootstrap | 1–2 weeks |
-| 2 | Plaid Link integration, WatermelonDB schema, `/transactions/sync` flow, webhook handler | 2–3 weeks |
-| 3 | Mobile UI — Home screen, Sankey chart, Plan screen, Settings | 3–4 weeks |
-| 4 | Next.js web dashboard on Render | 2–3 weeks |
-| **Total** | | **8–12 weeks** |
+| 1 | Supabase setup, auth, DB schema, Expo project bootstrap | Days 1–2 |
+| 2 | Plaid Link integration, WatermelonDB schema, `/transactions/sync` flow, webhook handler | Days 3–6 |
+| 3 | Mobile UI — Home screen, Sankey chart, Plan screen, Settings | Days 7–12 |
+| 4 | Next.js web dashboard on Render | Days 13–14 |
+| **Total** | | **2 weeks** |
 
-Frontend design agent handles visual polish (typography, spacing, color system, animations) — not included in above estimate as it runs in parallel with Phase 3.
+Frontend design agent runs in parallel with Phase 3. Web dashboard (Phase 4) is the lowest priority — can slip to week 3 if Sankey or Plaid integration takes longer than expected.
 
 ---
 
