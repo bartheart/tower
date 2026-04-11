@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SankeyChart from '../sankey/SankeyChart';
 import { buildSankeyData } from '../sankey/buildGraph';
 import {
@@ -18,6 +19,7 @@ function fmt(n: number) {
 
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
+  const { top } = useSafeAreaInsets();
   const transactions = useCurrentMonthTransactions();
   const accounts = useAccounts();
 
@@ -35,8 +37,17 @@ export default function HomeScreen() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
 
+  if (accounts.length === 0) {
+    return (
+      <View style={[s.container, s.emptyContainer, { paddingTop: top + 16 }]}>
+        <Text style={s.emptyTitle}>No accounts linked</Text>
+        <Text style={s.emptySub}>Go to Settings to connect your bank.</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content}>
+    <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
       {/* Balance header */}
       <View style={s.header}>
         <Text style={s.balanceLabel}>NET BALANCE</Text>
@@ -110,6 +121,9 @@ const s = StyleSheet.create({
   sankeyContainer: { marginBottom: 24 },
   sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
   recentContainer: { marginBottom: 24 },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  emptyTitle: { fontSize: 16, color: '#cbd5e1', fontWeight: '300', marginBottom: 8 },
+  emptySub: { fontSize: 12, color: '#475569', textAlign: 'center' },
   txnRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b',
