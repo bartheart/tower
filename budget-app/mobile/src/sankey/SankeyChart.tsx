@@ -82,7 +82,7 @@ export default function SankeyChart({ data, width, height, onNodePress }: Props)
               fill={color}
               fontSize={9}
               fontFamily="system"
-              dominantBaseline="middle"
+              dy={3}
             >
               {node.name}
             </SvgText>
