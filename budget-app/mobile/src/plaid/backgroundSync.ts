@@ -1,0 +1,62 @@
+import * as Notifications from 'expo-notifications';
+import { AppState, AppStateStatus } from 'react-native';
+import { database } from '../db';
+import PlaidItem from '../db/models/PlaidItem';
+import { syncTransactions } from './syncTransactions';
+import { supabase } from '../supabase/client';
+
+const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+
+export async function registerPushToken() {
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== 'granted') return;
+
+  const token = (await Notifications.getExpoPushTokenAsync()).data;
+
+  await supabase
+    .from('app_preferences')
+    .upsert({ expo_push_token: token }, { onConflict: 'user_id' });
+}
+
+export async function syncStaleItems() {
+  const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+  const now = Date.now();
+
+  for (const item of items) {
+    const lastSync = item.lastSyncedAt ?? 0;
+    if (now - lastSync > STALE_THRESHOLD_MS) {
+      await syncTransactions(item);
+    }
+  }
+}
+
+export function setupNotificationHandler() {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+
+  // Sync when notification received in foreground
+  return Notifications.addNotificationReceivedListener(async notification => {
+    const itemId = notification.request.content.data?.itemId as string | undefined;
+    if (!itemId) return;
+
+    const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+    const item = items.find(i => i.itemId === itemId);
+    if (item) await syncTransactions(item);
+  });
+}
+
+export function setupAppStateSync() {
+  let lastState = AppState.currentState;
+
+  return AppState.addEventListener('change', async (nextState: AppStateStatus) => {
+    if (lastState.match(/inactive|background/) && nextState === 'active') {
+      await syncStaleItems();
+    }
+    lastState = nextState;
+  });
+}
