@@ -36,7 +36,8 @@ export async function syncStaleItems() {
 export function setupNotificationHandler() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: false,
+      shouldShowBanner: false,
+      shouldShowList: false,
       shouldPlaySound: false,
       shouldSetBadge: false,
     }),
