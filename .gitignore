@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+*.env
+*.env.local
+supabase/.env
+budget-app/mobile/.env
+budget-app/web/.env.local
+.superpowers/
