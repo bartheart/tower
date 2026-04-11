@@ -8,10 +8,11 @@ import { syncTransactions } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { useAccounts } from '../hooks/useTransactions';
-import { signOut } from '../supabase/client';
+import { useAuth } from '../auth/AuthContext';
 
 export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
+  const { signOut } = useAuth();
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const accounts = useAccounts();
@@ -31,12 +32,12 @@ export default function SettingsScreen() {
 
   const handleLinkSuccess = useCallback(async (success: LinkSuccess) => {
     try {
-      const { accessToken, itemId } = await exchangePublicToken(success.publicToken);
+      const { itemId } = await exchangePublicToken(success.publicToken);
 
       await database.write(async () => {
         await database.get<PlaidItem>('plaid_items').create(item => {
           item.itemId = itemId;
-          item.accessToken = accessToken;
+          item.accessToken = '';  // blank — token lives in Vault now
           item.institutionId = success.metadata.institution?.id ?? '';
           item.institutionName = success.metadata.institution?.name ?? 'Bank';
           item.cursor = '';

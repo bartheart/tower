@@ -1,49 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AuthScreen from './src/screens/AuthScreen';
-import { supabase } from './src/supabase/client';
 import {
   registerPushToken,
   setupNotificationHandler,
   setupAppStateSync,
   syncStaleItems,
 } from './src/plaid/backgroundSync';
-import type { Session } from '@supabase/supabase-js';
 
 const Tab = createBottomTabNavigator();
 
+function AppContent() {
+  const { session, loading } = useAuth();
 
-export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
+  React.useEffect(() => {
     if (!session) return;
     registerPushToken(session.user.id);
     syncStaleItems();
-
     const notifSub = setupNotificationHandler();
     const appStateSub = setupAppStateSync();
-
     return () => {
       notifSub.remove();
       appStateSub.remove();
@@ -58,11 +40,13 @@ export default function App() {
     );
   }
 
-  if (!session) return (
-    <SafeAreaProvider>
-      <AuthScreen />
-    </SafeAreaProvider>
-  );
+  if (!session) {
+    return (
+      <SafeAreaProvider>
+        <AuthScreen />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -81,5 +65,13 @@ export default function App() {
         </Tab.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

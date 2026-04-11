@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { AppState, AppStateStatus } from 'react-native';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
-import { syncTransactions } from './syncTransactions';
+import { syncTransactions, migrateAccessTokens } from './syncTransactions';
 import { supabase } from '../supabase/client';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
@@ -21,6 +21,7 @@ export async function registerPushToken(userId: string) {
 }
 
 export async function syncStaleItems() {
+  await migrateAccessTokens(); // blank any legacy SQLite tokens
   const items = await database.get<PlaidItem>('plaid_items').query().fetch();
   const now = Date.now();
 
