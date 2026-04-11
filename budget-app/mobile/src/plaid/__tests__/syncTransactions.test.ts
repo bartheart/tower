@@ -3,6 +3,16 @@ import { database } from '../../db';
 import PlaidItem from '../../db/models/PlaidItem';
 import Transaction from '../../db/models/Transaction';
 
+jest.mock('../../supabase/client', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({
+        data: { session: { access_token: 'mock-jwt' } },
+      }),
+    },
+  },
+}));
+
 // Mock the db with in-memory test instance
 jest.mock('../../db', () => {
   const { Database } = require('@nozbe/watermelondb');
@@ -48,11 +58,11 @@ describe('syncTransactions', () => {
       json: async () => PLAID_SYNC_RESPONSE,
     });
 
-    // Seed a PlaidItem
+    // Seed a PlaidItem (accessToken is blank — token lives in Vault now)
     await database.write(async () => {
       await database.get<PlaidItem>('plaid_items').create(item => {
         item.itemId = 'item_1';
-        item.accessToken = 'access-sandbox-test';
+        item.accessToken = '';
         item.institutionId = 'ins_1';
         item.institutionName = 'Chase';
         item.cursor = '';
@@ -61,6 +71,12 @@ describe('syncTransactions', () => {
 
     const item = (await database.get<PlaidItem>('plaid_items').query().fetch())[0];
     await syncTransactions(item);
+
+    // Verify it called the Edge Function, not Plaid directly
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('sync-transactions'),
+      expect.objectContaining({ method: 'POST' })
+    );
 
     const txns = await database.get<Transaction>('transactions').query().fetch();
     expect(txns).toHaveLength(1);
