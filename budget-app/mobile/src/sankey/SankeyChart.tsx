@@ -21,15 +21,26 @@ const COLORS = [
 
 export default function SankeyChart({ data, width, height, onNodePress }: Props) {
   const { nodes, links } = useMemo(() => {
-    const layout = sankey<AppNode, AppLink>()
-      .nodeWidth(NODE_WIDTH)
-      .nodePadding(NODE_PADDING)
-      .extent([[8, 8], [width - 80, height - 8]]);
+    try {
+      const layout = sankey<AppNode, AppLink>()
+        .nodeWidth(NODE_WIDTH)
+        .nodePadding(NODE_PADDING)
+        .extent([[8, 8], [width - 80, height - 8]]);
 
-    return layout({
-      nodes: data.nodes.map(d => ({ ...d })),
-      links: data.links.map(d => ({ ...d })),
-    });
+      const nodeList = data.nodes.map(d => ({ ...d }));
+      const nameToIndex = new Map(data.nodes.map((n, i) => [n.name, i]));
+
+      return layout({
+        nodes: nodeList,
+        links: data.links.map(d => ({
+          value: d.value,
+          source: nameToIndex.get((d.source as AppNode).name) ?? 0,
+          target: nameToIndex.get((d.target as AppNode).name) ?? 0,
+        })),
+      });
+    } catch {
+      return { nodes: [], links: [] };
+    }
   }, [data, width, height]);
 
   const colorMap = useMemo(() => {
