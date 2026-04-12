@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create, open, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
 import { fetchLinkToken } from '../plaid/linkToken';
@@ -18,43 +18,63 @@ export default function SettingsScreen() {
 
   const institutions = [...new Set(accounts.map(a => a.institutionName))];
 
+  const handlePlaidSuccess = useCallback(async (success: LinkSuccess) => {
+    console.log('[Plaid] onSuccess fired, institution:', success.metadata.institution?.name);
+    try {
+      const { itemId } = await exchangePublicToken(success.publicToken);
+      await database.write(async () => {
+        await database.get<PlaidItem>('plaid_items').create(item => {
+          item.itemId = itemId;
+          item.accessToken = '';
+          item.institutionId = success.metadata.institution?.id ?? '';
+          item.institutionName = success.metadata.institution?.name ?? 'Bank';
+          item.cursor = '';
+        });
+      });
+      const item = (await database.get<PlaidItem>('plaid_items')
+        .query().fetch()).find(i => i.itemId === itemId)!;
+      await syncTransactions(item);
+      Alert.alert('Connected!', `${success.metadata.institution?.name} linked successfully.`);
+    } catch (err) {
+      Alert.alert('Error', `Failed to connect account: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLinking(false);
+    }
+  }, []);
+
+  const handlePlaidExit = useCallback((exit: LinkExit) => {
+    console.log('[Plaid] onExit fired, status:', exit.metadata.status);
+    setLinking(false);
+  }, []);
+
+  // Handle OAuth redirect — bank app/Safari redirects back to tower://plaid-oauth
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (url.startsWith('tower://plaid-oauth')) {
+        open({
+          receivedRedirectUri: url,
+          onSuccess: handlePlaidSuccess,
+          onExit: handlePlaidExit,
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [handlePlaidSuccess, handlePlaidExit]);
+
   const handleAddAccount = useCallback(async () => {
     setLinking(true);
     try {
       const token = await fetchLinkToken();
       create({ token });
       open({
-        onSuccess: async (success: LinkSuccess) => {
-          try {
-            const { itemId } = await exchangePublicToken(success.publicToken);
-            await database.write(async () => {
-              await database.get<PlaidItem>('plaid_items').create(item => {
-                item.itemId = itemId;
-                item.accessToken = '';
-                item.institutionId = success.metadata.institution?.id ?? '';
-                item.institutionName = success.metadata.institution?.name ?? 'Bank';
-                item.cursor = '';
-              });
-            });
-            const item = (await database.get<PlaidItem>('plaid_items')
-              .query().fetch()).find(i => i.itemId === itemId)!;
-            await syncTransactions(item);
-            Alert.alert('Connected!', `${success.metadata.institution?.name} linked successfully.`);
-          } catch {
-            Alert.alert('Error', 'Failed to connect account.');
-          } finally {
-            setLinking(false);
-          }
-        },
-        onExit: (_exit: LinkExit) => {
-          setLinking(false);
-        },
+        onSuccess: handlePlaidSuccess,
+        onExit: handlePlaidExit,
       });
-    } catch {
-      Alert.alert('Error', 'Could not start bank linking. Try again.');
+    } catch (err) {
+      Alert.alert('Error', `Bank linking failed: ${err instanceof Error ? err.message : String(err)}`);
       setLinking(false);
     }
-  }, []);
+  }, [handlePlaidSuccess, handlePlaidExit]);
 
   return (
     <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>

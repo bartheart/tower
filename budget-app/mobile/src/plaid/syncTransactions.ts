@@ -1,11 +1,8 @@
 import { Q } from '@nozbe/watermelondb';
 import PlaidItem from '../db/models/PlaidItem';
 import Transaction from '../db/models/Transaction';
-import Account from '../db/models/Account';
 import { database } from '../db';
 import { supabase } from '../supabase/client';
-
-const EDGE_FN_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
 
 const PLAID_CATEGORY_MAP: Record<string, string> = {
   'FOOD_AND_DRINK': 'Food and Drink',
@@ -44,32 +41,16 @@ interface PlaidTransaction {
   pending: boolean;
 }
 
-async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
-  return session;
-}
-
 export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
-  const session = await getSession();
   let cursor = plaidItem.cursor ?? '';
   let hasMore = true;
 
   while (hasMore) {
-    const response = await fetch(`${EDGE_FN_URL}/sync-transactions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        item_id: plaidItem.itemId,
-        cursor,
-      }),
+    const { data, error } = await supabase.functions.invoke('sync-transactions', {
+      body: { item_id: plaidItem.itemId, cursor },
     });
 
-    if (!response.ok) throw new Error('Sync failed');
-    const data = await response.json();
+    if (error) throw new Error(`sync-transactions failed: ${error.message}`);
 
     await database.write(async () => {
       for (const txn of data.added as PlaidTransaction[]) {
