@@ -4,7 +4,9 @@ import { database } from '../db';
 import Transaction from '../db/models/Transaction';
 import Account from '../db/models/Account';
 
-function currentMonthRange() {
+export type Period = 'week' | 'month';
+
+export function currentMonthRange(): { start: string; end: string } {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -14,11 +16,25 @@ function currentMonthRange() {
   };
 }
 
-export function useCurrentMonthTransactions() {
+export function getWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday, 1 = Monday … 6 = Saturday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return {
+    start: monday.toISOString().split('T')[0],
+    end: sunday.toISOString().split('T')[0],
+  };
+}
+
+export function useCurrentPeriodTransactions(period: Period = 'month') {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    const { start, end } = currentMonthRange();
+    const { start, end } = period === 'week' ? getWeekRange() : currentMonthRange();
     const subscription = database
       .get<Transaction>('transactions')
       .query(
@@ -30,7 +46,7 @@ export function useCurrentMonthTransactions() {
       .subscribe(setTransactions);
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [period]);
 
   return transactions;
 }
