@@ -8,6 +8,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AuthScreen from './src/screens/AuthScreen';
+import FloatingTabBar from './src/navigation/FloatingTabBar';
 import {
   registerPushToken,
   setupNotificationHandler,
@@ -52,16 +53,12 @@ function AppContent() {
     <SafeAreaProvider>
       <NavigationContainer>
         <Tab.Navigator
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: { backgroundColor: '#0f172a', borderTopColor: '#1e293b' },
-            tabBarActiveTintColor: '#6366f1',
-            tabBarInactiveTintColor: '#475569',
-          }}
+          tabBar={props => <FloatingTabBar {...props} />}
+          screenOptions={{ headerShown: false }}
         >
-          <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
-          <Tab.Screen name="Plan" component={PlanScreen} options={{ tabBarLabel: 'Plan' }} />
-          <Tab.Screen name="Settings" component={SettingsScreen} options={{ tabBarLabel: 'Settings' }} />
+          <Tab.Screen name="Home" component={HomeScreen} />
+          <Tab.Screen name="Plan" component={PlanScreen} />
+          <Tab.Screen name="Settings" component={SettingsScreen} />
         </Tab.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
