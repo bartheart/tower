@@ -126,8 +126,23 @@ test('onAuthStateChange fires update to session', async () => {
   expect(getByTestId('session').props.children).toBe('no-session');
 
   const newSession = { user: { id: 'user-456' }, access_token: 'tok2' };
-  act(() => { capturedCallback('SIGNED_IN', newSession); });
+  await act(async () => { await capturedCallback('SIGNED_IN', newSession); });
 
   expect(getByTestId('session').props.children).toBe('has-session');
   expect(getByTestId('user').props.children).toBe('user-456');
+});
+
+// 7. SIGNED_IN event resets database before mounting
+test('resets database when SIGNED_IN event fires', async () => {
+  mockGetSession.mockResolvedValue({ data: { session: null } });
+  let capturedCallback: any;
+  mockOnAuthStateChange.mockImplementation((cb) => { capturedCallback = cb; });
+
+  renderWithAuth();
+  await waitFor(() => expect(mockGetSession).toHaveBeenCalled());
+
+  const newSession = { user: { id: 'user-1' }, access_token: 'tok' };
+  await act(async () => { await capturedCallback('SIGNED_IN', newSession); });
+
+  expect(mockUnsafeResetDatabase).toHaveBeenCalledTimes(1);
 });

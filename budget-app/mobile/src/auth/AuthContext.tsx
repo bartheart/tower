@@ -26,12 +26,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Load existing session on cold start (fires INITIAL_SESSION, not SIGNED_IN)
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN') {
+        // Reset local DB before mounting the app for the new user.
+        // SIGNED_IN fires only on explicit sign-in (not cold-start session restore),
+        // so this is safe: no observers are mounted yet when this runs.
+        await database.unsafeResetDatabase().catch(() => {});
+      }
       setSession(session);
     });
 
@@ -39,14 +46,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    // Step 1: null the session — React unmounts tab navigator,
-    // unsubscribing all WatermelonDB observers before we reset the DB.
+    // Null session first so tab navigator unmounts all observers
     setSession(null);
-
-    // Step 2: sign out from Supabase
     await supabase.auth.signOut().catch(() => {});
-
-    // Step 3: wipe local DB (safe now — all observers are unmounted)
+    // Best-effort cleanup (primary cleanup now happens on SIGNED_IN)
     await database.unsafeResetDatabase().catch(() => {});
   }, []);
 
