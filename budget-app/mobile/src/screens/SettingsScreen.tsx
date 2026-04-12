@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, Linking, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create, open, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
 import { fetchLinkToken } from '../plaid/linkToken';
 import { exchangePublicToken } from '../plaid/exchangeToken';
-import { syncTransactions } from '../plaid/syncTransactions';
+import { syncTransactions, syncAllItems } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { useAccounts } from '../hooks/useTransactions';
@@ -14,7 +14,19 @@ export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
   const { signOut } = useAuth();
   const [linking, setLinking] = useState(false);
-  const accounts = useAccounts();
+  const [syncing, setSyncing] = useState(false);
+  const { accounts, loading: accountsLoading } = useAccounts();
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncAllItems();
+    } catch (err) {
+      Alert.alert('Sync failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
 
   const institutions = [...new Set(accounts.map(a => a.institutionName))];
 
@@ -80,18 +92,40 @@ export default function SettingsScreen() {
     <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
       <Text style={s.sectionLabel}>LINKED ACCOUNTS</Text>
 
-      {institutions.map(name => (
-        <View key={name} style={s.institutionCard}>
-          <Text style={s.institutionName}>{name}</Text>
-          <Text style={s.accountCount}>
-            {accounts.filter(a => a.institutionName === name).length} accounts
-          </Text>
+      {accountsLoading ? (
+        <ActivityIndicator color="#475569" style={{ marginVertical: 20 }} />
+      ) : institutions.length === 0 ? (
+        <View style={s.emptyCard}>
+          <Text style={s.emptyText}>No accounts linked yet</Text>
+          <Text style={s.emptyHint}>Tap Add Account to connect your bank</Text>
         </View>
-      ))}
+      ) : (
+        institutions.map(name => (
+          <View key={name} style={s.institutionCard}>
+            <View>
+              <Text style={s.institutionName}>{name}</Text>
+              <Text style={s.accountCount}>
+                {accounts.filter(a => a.institutionName === name).length} account
+                {accounts.filter(a => a.institutionName === name).length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <View style={s.syncStatus}>
+              <Text style={s.syncDot}>●</Text>
+              <Text style={s.syncLabel}>linked</Text>
+            </View>
+          </View>
+        ))
+      )}
 
-      <TouchableOpacity style={s.addButton} onPress={handleAddAccount} disabled={linking}>
-        <Text style={s.addButtonText}>{linking ? 'Loading...' : '+ Add Account'}</Text>
+      <TouchableOpacity style={s.addButton} onPress={handleAddAccount} disabled={linking || syncing}>
+        <Text style={s.addButtonText}>{linking ? 'Linking...' : '+ Add Account'}</Text>
       </TouchableOpacity>
+
+      {!accountsLoading && accounts.length > 0 && (
+        <TouchableOpacity style={s.syncButton} onPress={handleSync} disabled={syncing}>
+          <Text style={s.syncButtonText}>{syncing ? 'Syncing…' : '↻  Sync now'}</Text>
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         style={s.signOutButton}
@@ -112,12 +146,23 @@ const s = StyleSheet.create({
     backgroundColor: '#1e293b', borderRadius: 8, padding: 14, marginBottom: 8,
   },
   institutionName: { fontSize: 14, color: '#f1f5f9' },
-  accountCount: { fontSize: 12, color: '#64748b' },
   addButton: {
     backgroundColor: '#6366f1', borderRadius: 8, padding: 14,
     alignItems: 'center', marginTop: 8,
   },
   addButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  emptyCard: { padding: 20, alignItems: 'center', marginBottom: 8 },
+  emptyText: { fontSize: 13, color: '#475569', fontWeight: '500' },
+  emptyHint: { fontSize: 11, color: '#334155', marginTop: 4 },
+  accountCount: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  syncStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  syncDot: { fontSize: 8, color: '#22c55e' },
+  syncLabel: { fontSize: 11, color: '#475569' },
+  syncButton: {
+    borderWidth: 1, borderColor: '#334155', borderRadius: 8, padding: 14,
+    alignItems: 'center', marginTop: 8,
+  },
+  syncButtonText: { color: '#94a3b8', fontSize: 14 },
   signOutButton: { marginTop: 32, padding: 14, alignItems: 'center' },
   signOutText: { color: '#475569', fontSize: 14 },
 });

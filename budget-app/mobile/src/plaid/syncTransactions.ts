@@ -1,6 +1,7 @@
 import { Q } from '@nozbe/watermelondb';
 import PlaidItem from '../db/models/PlaidItem';
 import Transaction from '../db/models/Transaction';
+import Account from '../db/models/Account';
 import { database } from '../db';
 import { supabase } from '../supabase/client';
 
@@ -41,6 +42,44 @@ interface PlaidTransaction {
   pending: boolean;
 }
 
+interface PlaidAccount {
+  account_id: string;
+  name: string;
+  type: string;
+  subtype: string;
+  balances: { current: number | null; available: number | null };
+}
+
+async function upsertAccounts(accounts: PlaidAccount[], plaidItem: PlaidItem) {
+  if (!accounts?.length) return;
+
+  const existing = await database.get<Account>('accounts').query().fetch();
+  const existingMap = new Map(existing.map(a => [a.plaidAccountId, a]));
+
+  await database.write(async () => {
+    for (const acc of accounts) {
+      const record = existingMap.get(acc.account_id);
+      if (record) {
+        await record.update(a => {
+          a.currentBalance = acc.balances.current ?? 0;
+          a.availableBalance = acc.balances.available ?? 0;
+        });
+      } else {
+        await database.get<Account>('accounts').create(a => {
+          a.plaidAccountId = acc.account_id;
+          a.plaidItemId = plaidItem.itemId;
+          a.name = acc.name;
+          a.type = acc.type;
+          a.subtype = acc.subtype ?? '';
+          a.currentBalance = acc.balances.current ?? 0;
+          a.availableBalance = acc.balances.available ?? 0;
+          a.institutionName = plaidItem.institutionName;
+        });
+      }
+    }
+  });
+}
+
 export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
   let cursor = plaidItem.cursor ?? '';
   let hasMore = true;
@@ -52,8 +91,17 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
 
     if (error) throw new Error(`sync-transactions failed: ${error.message}`);
 
+    // Upsert accounts from every sync response (balances update each call)
+    await upsertAccounts(data.accounts, plaidItem);
+
     await database.write(async () => {
       for (const txn of data.added as PlaidTransaction[]) {
+        // Skip if already exists (idempotent re-sync)
+        const existing = await database.get<Transaction>('transactions')
+          .query(Q.where('plaid_transaction_id', txn.transaction_id))
+          .fetch();
+        if (existing.length > 0) continue;
+
         await database.get<Transaction>('transactions').create(t => {
           t.plaidTransactionId = txn.transaction_id;
           t.accountId = txn.account_id;
