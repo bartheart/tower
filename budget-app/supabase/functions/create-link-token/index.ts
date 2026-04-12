@@ -18,7 +18,7 @@ serve(async (req) => {
     headers: plaidHeaders(),
     body: JSON.stringify({
       user: { client_user_id: user.id },
-      client_name: 'Budget App',
+      client_name: 'Tower',
       products: ['transactions'],
       country_codes: ['US'],
       language: 'en',

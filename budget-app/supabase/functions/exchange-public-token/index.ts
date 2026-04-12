@@ -29,6 +29,11 @@ serve(async (req) => {
 
   const { access_token, item_id } = plaidData;
 
+  // Ensure public.users row exists — handles accounts created before the trigger was deployed
+  await supabase
+    .from('users')
+    .upsert({ id: user.id, email: user.email ?? '' }, { onConflict: 'id' });
+
   // Store access_token server-side — never returned to client
   const { error: upsertError } = await supabase
     .from('plaid_tokens')
