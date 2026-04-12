@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Q } from '@nozbe/watermelondb';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../supabase/client';
-import { database } from '../db';
 import Transaction from '../db/models/Transaction';
 
 export interface BudgetCategory {
@@ -13,52 +11,61 @@ export interface BudgetCategory {
   spent: number;
 }
 
-function currentMonthStart() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+interface SupabaseBudget {
+  id: string;
+  name: string;
+  emoji: string;
+  monthly_limit: number;
+  color: string;
 }
 
-export function useBudgets(): BudgetCategory[] {
-  const [budgets, setBudgets] = useState<BudgetCategory[]>([]);
+export function useBudgets(transactions: Transaction[]): BudgetCategory[] {
+  const [categories, setCategories] = useState<SupabaseBudget[]>([]);
 
+  // Fetch category definitions once (they rarely change)
   useEffect(() => {
-    async function load() {
-      const { data: categories } = await supabase
-        .from('budget_categories')
-        .select('*')
-        .order('name');
-
-      if (!categories) return;
-
-      const start = currentMonthStart();
-      const txns = await database
-        .get<Transaction>('transactions')
-        .query(Q.where('date', Q.gte(start)), Q.where('pending', false))
-        .fetch();
-
-      const spendMap = new Map<string, number>();
-      for (const txn of txns) {
-        if (txn.amount <= 0) continue;
-        const key = txn.categoryL1;
-        spendMap.set(key, (spendMap.get(key) ?? 0) + txn.amount);
-      }
-
-      const result: BudgetCategory[] = categories.map(cat => ({
-        id: cat.id,
-        name: cat.name,
-        emoji: cat.emoji,
-        monthlyLimit: cat.monthly_limit,
-        color: cat.color,
-        spent: spendMap.get(cat.name) ?? 0,
-      }));
-
-      // Over-budget categories float to top
-      result.sort((a, b) => (b.spent / b.monthlyLimit) - (a.spent / a.monthlyLimit));
-      setBudgets(result);
-    }
-
-    load();
+    supabase
+      .from('budget_categories')
+      .select('*')
+      .order('name')
+      .then(({ data }) => { if (data) setCategories(data); });
   }, []);
 
-  return budgets;
+  // Recalculate spend whenever transactions change (reactive)
+  return useMemo(() => {
+    const spendMap = new Map<string, number>();
+    for (const txn of transactions) {
+      if (txn.amount <= 0 || txn.pending) continue;
+      spendMap.set(txn.categoryL1, (spendMap.get(txn.categoryL1) ?? 0) + txn.amount);
+    }
+
+    const result: BudgetCategory[] = categories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      emoji: cat.emoji,
+      monthlyLimit: cat.monthly_limit,
+      color: cat.color,
+      spent: spendMap.get(cat.name) ?? 0,
+    }));
+
+    result.sort((a, b) => (b.spent / b.monthlyLimit) - (a.spent / a.monthlyLimit));
+    return result;
+  }, [categories, transactions]);
+}
+
+export async function createBudget(
+  name: string,
+  emoji: string,
+  monthlyLimit: number,
+  color: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('budget_categories')
+    .insert({ name, emoji, monthly_limit: monthlyLimit, color });
+  if (error) throw error;
+}
+
+export async function deleteBudget(id: string): Promise<void> {
+  const { error } = await supabase.from('budget_categories').delete().eq('id', id);
+  if (error) throw error;
 }
