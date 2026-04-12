@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create, open, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
 import { fetchLinkToken } from '../plaid/linkToken';
 import { exchangePublicToken } from '../plaid/exchangeToken';
-import { syncTransactions } from '../plaid/syncTransactions';
+import { syncTransactions, syncAllItems } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { useAccounts } from '../hooks/useTransactions';
@@ -14,7 +14,19 @@ export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
   const { signOut } = useAuth();
   const [linking, setLinking] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const accounts = useAccounts();
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncAllItems();
+    } catch (err) {
+      Alert.alert('Sync failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
 
   const institutions = [...new Set(accounts.map(a => a.institutionName))];
 
@@ -89,9 +101,15 @@ export default function SettingsScreen() {
         </View>
       ))}
 
-      <TouchableOpacity style={s.addButton} onPress={handleAddAccount} disabled={linking}>
-        <Text style={s.addButtonText}>{linking ? 'Loading...' : '+ Add Account'}</Text>
+      <TouchableOpacity style={s.addButton} onPress={handleAddAccount} disabled={linking || syncing}>
+        <Text style={s.addButtonText}>{linking ? 'Linking...' : '+ Add Account'}</Text>
       </TouchableOpacity>
+
+      {accounts.length > 0 && (
+        <TouchableOpacity style={s.syncButton} onPress={handleSync} disabled={syncing}>
+          <Text style={s.syncButtonText}>{syncing ? 'Syncing...' : '↻  Sync now'}</Text>
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         style={s.signOutButton}
@@ -118,6 +136,11 @@ const s = StyleSheet.create({
     alignItems: 'center', marginTop: 8,
   },
   addButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  syncButton: {
+    borderWidth: 1, borderColor: '#334155', borderRadius: 8, padding: 14,
+    alignItems: 'center', marginTop: 8,
+  },
+  syncButtonText: { color: '#94a3b8', fontSize: 14 },
   signOutButton: { marginTop: 32, padding: 14, alignItems: 'center' },
   signOutText: { color: '#475569', fontSize: 14 },
 });

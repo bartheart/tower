@@ -189,7 +189,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Sankey chart — tap a node to drill down */}
-        {sankeyData.nodes.length > 2 && (
+        {sankeyData.nodes.length > 1 && (
           <View style={s.sankeyContainer}>
             <Text style={s.sectionLabel}>WHERE IT'S GOING · tap to explore</Text>
             <SankeyChart

@@ -55,7 +55,10 @@ export async function createGoal(
   currentAmount: number,
   targetDate: string | null
 ): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
   const { error } = await supabase.from('savings_goals').insert({
+    user_id: user.id,
     name,
     emoji,
     target_amount: targetAmount,
