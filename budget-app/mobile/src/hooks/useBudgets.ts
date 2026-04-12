@@ -8,6 +8,7 @@ export interface BudgetCategory {
   emoji: string;
   monthlyLimit: number;
   color: string;
+  targetPct: number | null;  // % of income; null = not set / excluded from wellness score
   spent: number;
 }
 
@@ -17,6 +18,7 @@ interface SupabaseBudget {
   emoji: string;
   monthly_limit: number;
   color: string;
+  target_pct: number | null;
 }
 
 export function useBudgets(transactions: Transaction[]): {
@@ -55,6 +57,7 @@ export function useBudgets(transactions: Transaction[]): {
       emoji: cat.emoji,
       monthlyLimit: cat.monthly_limit,
       color: cat.color,
+      targetPct: cat.target_pct ?? null,
       spent: spendMap.get(cat.name) ?? 0,
     }));
 
@@ -76,6 +79,20 @@ export async function createBudget(
   const { error } = await supabase
     .from('budget_categories')
     .insert({ user_id: user.id, name, emoji, monthly_limit: monthlyLimit, color });
+  if (error) throw error;
+}
+
+export async function updateBudget(
+  id: string,
+  fields: { monthlyLimit?: number; targetPct?: number }
+): Promise<void> {
+  const patch: Record<string, number> = {};
+  if (fields.monthlyLimit !== undefined) patch.monthly_limit = fields.monthlyLimit;
+  if (fields.targetPct !== undefined) patch.target_pct = fields.targetPct;
+  const { error } = await supabase
+    .from('budget_categories')
+    .update(patch)
+    .eq('id', id);
   if (error) throw error;
 }
 
