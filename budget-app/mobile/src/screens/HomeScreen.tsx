@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, useWindowDimensions,
-  TouchableOpacity, Modal, FlatList,
+  TouchableOpacity, Modal, FlatList, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SankeyChart from '../sankey/SankeyChart';
@@ -123,7 +123,7 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { top } = useSafeAreaInsets();
   const transactions = useCurrentMonthTransactions();
-  const accounts = useAccounts();
+  const { accounts, loading: accountsLoading } = useAccounts();
 
   const totalBalance = useTotalBalance(accounts);
   const monthlyIncome = useMonthlyIncome(transactions);
@@ -150,11 +150,19 @@ export default function HomeScreen() {
     setSankeyNode(name === 'Income' ? null : name);
   }, []);
 
+  if (accountsLoading) {
+    return (
+      <View style={[s.container, s.emptyContainer]}>
+        <ActivityIndicator color="#6366f1" />
+      </View>
+    );
+  }
+
   if (accounts.length === 0) {
     return (
       <View style={[s.container, s.emptyContainer, { paddingTop: top + 16 }]}>
         <Text style={s.emptyTitle}>No accounts linked</Text>
-        <Text style={s.emptySub}>Go to Settings to connect your bank.</Text>
+        <Text style={s.emptySub}>Go to Settings → Add Account to connect your bank.</Text>
       </View>
     );
   }

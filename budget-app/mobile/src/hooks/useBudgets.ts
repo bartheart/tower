@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from '../supabase/client';
 import Transaction from '../db/models/Transaction';
 
@@ -19,24 +19,34 @@ interface SupabaseBudget {
   color: string;
 }
 
-export function useBudgets(transactions: Transaction[]): BudgetCategory[] {
+export function useBudgets(transactions: Transaction[]): {
+  budgets: BudgetCategory[];
+  reload: () => void;
+} {
   const [categories, setCategories] = useState<SupabaseBudget[]>([]);
 
-  // Fetch category definitions once (they rarely change)
-  useEffect(() => {
-    supabase
+  const loadCategories = useCallback(async () => {
+    const { data } = await supabase
       .from('budget_categories')
       .select('*')
-      .order('name')
-      .then(({ data }) => { if (data) setCategories(data); });
+      .order('name');
+    if (data) setCategories(data);
   }, []);
 
-  // Recalculate spend whenever transactions change (reactive)
-  return useMemo(() => {
+  useEffect(() => { loadCategories(); }, [loadCategories]);
+
+  const budgets = useMemo(() => {
+    // Build spend map keyed by both categoryL1 and categoryL2 so budgets
+    // named either "Food and Drink" or "Groceries" both get correct spend.
     const spendMap = new Map<string, number>();
     for (const txn of transactions) {
       if (txn.amount <= 0 || txn.pending) continue;
-      spendMap.set(txn.categoryL1, (spendMap.get(txn.categoryL1) ?? 0) + txn.amount);
+      const l1 = txn.categoryL1;
+      const l2 = txn.categoryL2;
+      spendMap.set(l1, (spendMap.get(l1) ?? 0) + txn.amount);
+      if (l2 && l2 !== l1) {
+        spendMap.set(l2, (spendMap.get(l2) ?? 0) + txn.amount);
+      }
     }
 
     const result: BudgetCategory[] = categories.map(cat => ({
@@ -51,6 +61,8 @@ export function useBudgets(transactions: Transaction[]): BudgetCategory[] {
     result.sort((a, b) => (b.spent / b.monthlyLimit) - (a.spent / a.monthlyLimit));
     return result;
   }, [categories, transactions]);
+
+  return { budgets, reload: loadCategories };
 }
 
 export async function createBudget(

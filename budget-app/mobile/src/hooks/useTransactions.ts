@@ -35,19 +35,23 @@ export function useCurrentMonthTransactions() {
   return transactions;
 }
 
-export function useAccounts() {
+export function useAccounts(): { accounts: Account[]; loading: boolean } {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const subscription = database
       .get<Account>('accounts')
       .query()
       .observe()
-      .subscribe(setAccounts);
+      .subscribe(results => {
+        setAccounts(results);
+        setLoading(false);
+      });
     return () => subscription.unsubscribe();
   }, []);
 
-  return accounts;
+  return { accounts, loading };
 }
 
 export function useTotalBalance(accounts: Account[]) {
