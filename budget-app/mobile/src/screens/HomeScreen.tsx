@@ -47,13 +47,12 @@ function Sparkline({ history, color }: { history: number[]; color: string }) {
 
 // ─── Tile: Wellness Score ─────────────────────────────────────────────────────
 
-function ScoreTile({ score, history, delta, status, statusColor, width, onPress }: {
+function ScoreTile({ score, history, delta, status, statusColor, width }: {
   score: number; history: number[]; delta: number;
   status: string; statusColor: string; width: number;
-  onPress: () => void;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[t.scoreTile, { width }]}>
+    <View style={[t.scoreTile, { width }]}>
       <View style={t.scoreLeft}>
         <Text style={t.scoreLabel}>WELLNESS SCORE</Text>
         <Text style={t.scoreNumber}>{score}</Text>
@@ -66,7 +65,7 @@ function ScoreTile({ score, history, delta, status, statusColor, width, onPress 
           {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)} pts
         </Text>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -230,7 +229,6 @@ export default function HomeScreen() {
           delta={wellness.delta}
           status={wellness.status}
           statusColor={wellness.statusColor}
-          onPress={goToReport}
         />
 
         {/* Budget tile carousel — total + per-category, swipe left */}
