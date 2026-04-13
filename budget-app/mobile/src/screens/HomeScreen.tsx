@@ -12,6 +12,7 @@ import {
 } from '../hooks/useTransactions';
 import { useBudgets, BudgetCategory } from '../hooks/useBudgets';
 import { useWellnessScore } from '../hooks/useWellnessScore';
+import { useIncome } from '../hooks/useIncome';
 import Transaction from '../db/models/Transaction';
 
 function fmt(n: number) {
@@ -69,6 +70,22 @@ function ScoreTile({ score, history, delta, status, statusColor, width }: {
   );
 }
 
+// ─── Tile: Income ─────────────────────────────────────────────────────────────
+
+function IncomeTile({ confirmedMonthlyIncome, width, onPress }: {
+  confirmedMonthlyIncome: number; width: number; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[t.incomeTile, { width }]}>
+      <Text style={t.incomeLabel}>MONTHLY INCOME</Text>
+      <Text style={t.incomeValue}>{fmt(confirmedMonthlyIncome)}</Text>
+      {confirmedMonthlyIncome === 0 && (
+        <Text style={t.incomeHint}>Tap to add income sources</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 // ─── Tile: Budget ─────────────────────────────────────────────────────────────
 
 function BudgetTile({ budget, totalRemaining, period, width, isTotal, onPress }: {
@@ -79,8 +96,9 @@ function BudgetTile({ budget, totalRemaining, period, width, isTotal, onPress }:
   isTotal: boolean;
   onPress: () => void;
 }) {
+  const isGoal = !isTotal && (budget?.isGoal ?? false);
   const color = isTotal ? '#6366f1' : (budget?.color ?? '#6366f1');
-  const bgStart = isTotal ? '#1e1b4b' : '#0f172a';
+  const bgStart = isTotal ? '#1e1b4b' : isGoal ? '#0d1a2e' : '#0f172a';
   const label = isTotal ? 'ALL BUDGETS' : (budget?.name ?? '');
   const remaining = isTotal
     ? totalRemaining ?? 0
@@ -104,7 +122,12 @@ function BudgetTile({ budget, totalRemaining, period, width, isTotal, onPress }:
         <Text style={[t.budgetSub, { color }]}>
           left this {period === 'week' ? 'week' : 'month'}
         </Text>
-        {limit != null && (
+        {isGoal && budget?.monthlyLimit != null && (
+          <Text style={[t.budgetSub, { color: '#a5b4fc', marginTop: 0 }]}>
+            Goal · {fmt(budget.monthlyLimit)}/mo contribution
+          </Text>
+        )}
+        {!isGoal && limit != null && (
           <Text style={t.budgetFaint}>
             {fmt(spent ?? 0)} spent · {fmt(limit)} budget
           </Text>
@@ -155,12 +178,15 @@ export default function HomeScreen() {
   const transactions = useCurrentPeriodTransactions(period);
   const { accounts, loading: accountsLoading } = useAccounts();
   const { budgets } = useBudgets(transactions);
+  const { confirmedMonthlyIncome } = useIncome();
 
   const totalBalance = useTotalBalance(accounts);
   const monthlyIncome = useMonthlyIncome(transactions);
   const monthlySpend = useMonthlySpend(transactions);
 
-  const wellness = useWellnessScore(transactions, budgets, monthlyIncome, 7);
+  // Use confirmed income for wellness score; fall back to detected income if not yet confirmed
+  const incomeForScore = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome : monthlyIncome;
+  const wellness = useWellnessScore(transactions, budgets, incomeForScore, 7);
   const totalRemaining = budgets.reduce((s, b) => s + b.monthlyLimit, 0) - monthlySpend;
 
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
@@ -179,7 +205,10 @@ export default function HomeScreen() {
   // Full-screen width for each tile — pagingEnabled snaps exactly one tile at a time
   const TILE_WIDTH = width;
 
-  const goToReport = () => navigation.navigate('Plan', { view: 'report' });
+  const goToReport = (budgetId?: string) =>
+    navigation.navigate('Report', { budgetId, period });
+  const goToIncome = () =>
+    navigation.navigate('Tabs', { screen: 'Plan', params: { planningTab: 'income' } });
 
   if (accountsLoading) {
     return <View style={[s.container, s.center]}><ActivityIndicator color="#6366f1" /></View>;
@@ -253,7 +282,7 @@ export default function HomeScreen() {
                   isTotal
                   totalRemaining={totalRemaining}
                   period={period}
-                  onPress={goToReport}
+                  onPress={() => goToReport(undefined)}
                 />
               );
             }
@@ -263,7 +292,7 @@ export default function HomeScreen() {
                 isTotal={false}
                 budget={item.budget}
                 period={period}
-                onPress={goToReport}
+                onPress={() => goToReport(item.budget.id)}
               />
             );
           }}
@@ -278,12 +307,17 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Income / Spent pills */}
+        {/* Income (tappable → income page) / Spent pills */}
         <View style={s.pillRow}>
-          <View style={[s.pill, s.pillIncome]}>
-            <Text style={s.pillLabel}>INCOME</Text>
-            <Text style={[s.pillValue, { color: '#4ade80' }]}>{fmt(monthlyIncome)}</Text>
-          </View>
+          <TouchableOpacity style={[s.pill, s.pillIncome]} onPress={goToIncome} activeOpacity={0.75}>
+            <Text style={s.pillLabel}>MONTHLY INCOME</Text>
+            <Text style={[s.pillValue, { color: '#4ade80' }]}>
+              {confirmedMonthlyIncome > 0 ? fmt(confirmedMonthlyIncome) : fmt(monthlyIncome)}
+            </Text>
+            {confirmedMonthlyIncome === 0 && (
+              <Text style={s.pillHint}>tap to confirm</Text>
+            )}
+          </TouchableOpacity>
           <View style={[s.pill, s.pillNeutral]}>
             <Text style={s.pillLabel}>SPENT</Text>
             <Text style={[s.pillValue, { color: '#f1f5f9' }]}>{fmt(monthlySpend)}</Text>
@@ -330,6 +364,15 @@ const SCORE_H = 90;
 const TILE_H = 140;
 
 const t = StyleSheet.create({
+  incomeTile: {
+    height: 56, backgroundColor: '#0d2818',
+    borderRadius: 8, borderWidth: 1, borderColor: '#16a34a33',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, marginBottom: 8,
+  },
+  incomeLabel: { fontSize: 9, color: '#4ade80', letterSpacing: 1.5 },
+  incomeValue: { fontSize: 18, fontWeight: '700', color: '#f1f5f9', fontVariant: ['tabular-nums'] },
+  incomeHint: { fontSize: 9, color: '#475569' },
   scoreTile: {
     height: SCORE_H, backgroundColor: '#1e293b',
     borderRadius: 10, borderWidth: 1, borderColor: '#f59e0b22',
@@ -382,6 +425,7 @@ const s = StyleSheet.create({
   pillNeutral: { backgroundColor: '#1e293b' },
   pillLabel: { fontSize: 9, color: '#64748b', letterSpacing: 1 },
   pillValue: { fontSize: 15, fontWeight: '600', marginTop: 2 },
+  pillHint: { fontSize: 9, color: '#16a34a', marginTop: 2 },
   recentContainer: { marginBottom: 24 },
   sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },

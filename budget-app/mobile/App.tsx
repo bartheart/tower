@@ -2,10 +2,12 @@ import React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
+import ReportScreen from './src/screens/ReportScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import FloatingTabBar from './src/navigation/FloatingTabBar';
@@ -17,6 +19,42 @@ import {
 } from './src/plaid/backgroundSync';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+// ─── Tab navigator (Home · Plan · Settings) ───────────────────────────────────
+
+function TabNavigator() {
+  return (
+    <Tab.Navigator
+      tabBar={props => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Plan" component={PlanScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+}
+
+// ─── Root stack (Tabs + Report pushed on top) ─────────────────────────────────
+
+function RootNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Tabs" component={TabNavigator} />
+      <Stack.Screen
+        name="Report"
+        component={ReportScreen}
+        options={{
+          animation: 'slide_from_right',
+          gestureEnabled: true,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+// ─── App shell ────────────────────────────────────────────────────────────────
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -52,14 +90,7 @@ function AppContent() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Tab.Navigator
-          tabBar={props => <FloatingTabBar {...props} />}
-          screenOptions={{ headerShown: false }}
-        >
-          <Tab.Screen name="Home" component={HomeScreen} />
-          <Tab.Screen name="Plan" component={PlanScreen} />
-          <Tab.Screen name="Settings" component={SettingsScreen} />
-        </Tab.Navigator>
+        <RootNavigator />
       </NavigationContainer>
     </SafeAreaProvider>
   );
