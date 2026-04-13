@@ -7,10 +7,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget } from '../hooks/useBudgets';
+import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, updateGoalProgress } from '../hooks/useGoals';
 import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
 import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSource, deleteIncomeSource } from '../hooks/useIncome';
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
+import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
 import Transaction from '../db/models/Transaction';
 
@@ -381,6 +383,226 @@ function IncomeTab({ onReload }: { onReload: () => void }) {
   );
 }
 
+// ─── Bucket Detail Sheet ──────────────────────────────────────────────────────
+
+function BucketDetailSheet({
+  visible,
+  budget,
+  fixedItems,
+  confirmedMonthlyIncome,
+  onClose,
+  onSaved,
+  onDeleted,
+  onReloadFixed,
+}: {
+  visible: boolean;
+  budget: BudgetCategory | null;
+  fixedItems: FixedItem[];
+  confirmedMonthlyIncome: number;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+  onReloadFixed: () => void;
+}) {
+  const [pctInput, setPctInput] = useState('');
+  const [floorInput, setFloorInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [floorError, setFloorError] = useState('');
+
+  useEffect(() => {
+    if (budget) {
+      setPctInput(budget.targetPct != null ? String(budget.targetPct) : '');
+      setFloorInput(String(budget.monthlyFloor));
+      setFloorError('');
+    }
+  }, [budget?.id]);
+
+  const confirmedFloorMin = fixedItems
+    .filter(fi => fi.isConfirmed && !fi.needsReview)
+    .reduce((s, fi) => s + fi.effectiveAmount, 0);
+
+  const allocationAmt = budget && confirmedMonthlyIncome > 0
+    ? confirmedMonthlyIncome * (budget.targetPct ?? 0) / 100
+    : (budget?.monthlyLimit ?? 0);
+
+  const handleSave = async () => {
+    if (!budget) return;
+    const pctVal = parseFloat(pctInput);
+    const floorVal = parseFloat(floorInput) || 0;
+
+    if (floorVal < confirmedFloorMin - 0.01) {
+      setFloorError(`Floor cannot be below ${fmt(confirmedFloorMin)} — remove a confirmed fixed charge first`);
+      return;
+    }
+    setFloorError('');
+    setSaving(true);
+    try {
+      await updateBudget(budget.id, {
+        targetPct: isNaN(pctVal) || pctVal <= 0 ? 0 : pctVal,
+        monthlyFloor: floorVal,
+      });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Error saving', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!budget) return;
+    Alert.alert(`Delete "${budget.name}"?`, 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await deleteBudget(budget.id);
+          onDeleted();
+          onClose();
+        },
+      },
+    ]);
+  };
+
+  const handleConfirmFixed = async (fi: FixedItem) => {
+    await confirmFixedItem(fi.id);
+    await recomputeFloor(fi.categoryId);
+    onReloadFixed();
+    // Update floor input to reflect new confirmed floor
+    const newFloor = fixedItems
+      .filter(x => x.id === fi.id ? true : (x.isConfirmed && !x.needsReview))
+      .reduce((s, x) => s + x.effectiveAmount, 0);
+    setFloorInput(String(Math.round(newFloor)));
+  };
+
+  const handleDismissFixed = async (fi: FixedItem) => {
+    await dismissFixedItem(fi.id);
+    onReloadFixed();
+  };
+
+  if (!budget) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: '#0f172a' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={s.detailContent} keyboardShouldPersistTaps="handled">
+          {/* Handle + header */}
+          <View style={s.detailHandle} />
+          <View style={s.detailHeader}>
+            <View style={[s.bucketAccentBar, { backgroundColor: budget.color, height: 24, marginRight: 10 }]} />
+            <Text style={s.detailTitle}>{budget.name}{budget.isGoal ? '  ·  Goal' : ''}</Text>
+          </View>
+
+          {/* Current allocation summary */}
+          <View style={s.detailSummaryRow}>
+            <View style={s.detailSummaryItem}>
+              <Text style={s.detailSummaryLabel}>ALLOCATION</Text>
+              <Text style={s.detailSummaryValue}>{fmt(allocationAmt)}/mo</Text>
+            </View>
+            <View style={s.detailSummaryItem}>
+              <Text style={s.detailSummaryLabel}>SPENT</Text>
+              <Text style={[s.detailSummaryValue, { color: budget.spent > allocationAmt ? '#ef4444' : '#f1f5f9' }]}>
+                {fmt(budget.spent)}
+              </Text>
+            </View>
+            <View style={s.detailSummaryItem}>
+              <Text style={s.detailSummaryLabel}>FLOOR</Text>
+              <Text style={s.detailSummaryValue}>{fmt(budget.monthlyFloor)}</Text>
+            </View>
+          </View>
+
+          {/* Pct editor */}
+          <Text style={s.detailLabel}>ALLOCATION %</Text>
+          <View style={s.detailInputRow}>
+            <TextInput
+              style={s.detailInput}
+              value={pctInput}
+              onChangeText={setPctInput}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#334155"
+            />
+            <Text style={s.detailInputSuffix}>%</Text>
+            {confirmedMonthlyIncome > 0 && (
+              <Text style={s.detailInputHint}>
+                = {fmt(confirmedMonthlyIncome * (parseFloat(pctInput) || 0) / 100)}/mo
+              </Text>
+            )}
+          </View>
+
+          {/* Floor editor */}
+          <Text style={s.detailLabel}>MONTHLY FLOOR</Text>
+          <View style={s.detailInputRow}>
+            <Text style={s.detailInputPrefix}>$</Text>
+            <TextInput
+              style={s.detailInput}
+              value={floorInput}
+              onChangeText={v => { setFloorInput(v); setFloorError(''); }}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#334155"
+            />
+          </View>
+          {confirmedFloorMin > 0 && (
+            <Text style={s.detailFloorHint}>
+              Min {fmt(confirmedFloorMin)} from {fixedItems.filter(fi => fi.isConfirmed && !fi.needsReview).length} confirmed fixed charge{fixedItems.filter(fi => fi.isConfirmed && !fi.needsReview).length !== 1 ? 's' : ''}
+            </Text>
+          )}
+          {floorError ? <Text style={s.detailFloorError}>{floorError}</Text> : null}
+
+          {/* Fixed charges */}
+          <Text style={[s.detailLabel, { marginTop: 20 }]}>FIXED CHARGES</Text>
+          {fixedItems.length === 0 ? (
+            <Text style={s.txnEmpty}>No fixed charges detected yet.</Text>
+          ) : (
+            fixedItems.map(fi => (
+              <View key={fi.id} style={s.fixedItemRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fixedItemName}>{fi.merchantName}</Text>
+                  <Text style={s.fixedItemSub}>
+                    {fmt(fi.detectedAmount)} detected
+                    {fi.confirmedAmount != null ? ` · ${fmt(fi.confirmedAmount)} confirmed` : ''}
+                    {fi.needsReview ? ' · AMOUNT CHANGED' : ''}
+                  </Text>
+                </View>
+                {fi.isConfirmed && !fi.needsReview ? (
+                  <View style={s.confirmedChip}>
+                    <Text style={s.confirmedChipText}>Fixed</Text>
+                  </View>
+                ) : (
+                  <View style={s.fixedItemActions}>
+                    <TouchableOpacity onPress={() => handleConfirmFixed(fi)} style={s.confirmBtn}>
+                      <Text style={s.confirmBtnText}>{fi.needsReview ? 'Accept' : 'Confirm'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDismissFixed(fi)} style={s.dismissBtn}>
+                      <Text style={s.dismissBtnText}>Dismiss</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+
+          {/* Actions */}
+          <TouchableOpacity style={s.savePctsBtn} onPress={handleSave} disabled={saving}>
+            <Text style={s.savePctsText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.detailDeleteBtn} onPress={handleDelete}>
+            <Text style={s.detailDeleteText}>Delete Bucket</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.detailCancelBtn} onPress={onClose}>
+            <Text style={s.detailCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 // ─── Buckets Tab ──────────────────────────────────────────────────────────────
 
 function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, highlightId }: {
@@ -391,71 +613,8 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   highlightId?: string;
 }) {
   const { items: fixedItems, pendingReview, reload: reloadFixed } = useFixedItems();
-  const [editingPcts, setEditingPcts] = useState<Record<string, string>>({});
-  const [savingPcts, setSavingPcts] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  // Pre-expand highlighted bucket (from Report's "Adjust Plan")
-  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(
-    highlightId ? new Set([highlightId]) : new Set()
-  );
-
-  // Sync expanded set when highlightId changes (e.g. on re-navigate)
-  useEffect(() => {
-    if (highlightId) {
-      setExpandedBuckets(prev => new Set([...prev, highlightId]));
-    }
-  }, [highlightId]);
-
-  // Init pct inputs when budgets load
-  useEffect(() => {
-    const initial: Record<string, string> = {};
-    budgets.forEach(b => { initial[b.id] = b.targetPct != null ? String(b.targetPct) : ''; });
-    setEditingPcts(initial);
-  }, [budgets]);
-
-  const toggleBucket = (id: string) => {
-    setExpandedBuckets(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const handleSavePcts = async () => {
-    setSavingPcts(true);
-    try {
-      await Promise.all(
-        Object.entries(editingPcts).map(async ([id, pctStr]) => {
-          const pct = parseFloat(pctStr);
-          await updateBudget(id, { targetPct: isNaN(pct) || pct <= 0 ? 0 : pct });
-        })
-      );
-      await onReload(highlightId);
-    } catch (e: any) {
-      Alert.alert('Error saving', e.message);
-    } finally { setSavingPcts(false); }
-  };
-
-  const handleDeleteBudget = (id: string, name: string) => {
-    Alert.alert(`Delete "${name}"?`, 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteBudget(id); onReload(); } },
-    ]);
-  };
-
-  const handleConfirmFixed = async (itemId: string, categoryId: string, amount?: number) => {
-    await confirmFixedItem(itemId, amount);
-    await recomputeFloor(categoryId);
-    reloadFixed();
-    onReload();
-  };
-
-  const handleDismissFixed = async (itemId: string) => {
-    await dismissFixedItem(itemId);
-    reloadFixed();
-  };
-
-  const allocatedTotal = Object.values(editingPcts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const [detailBudget, setDetailBudget] = useState<BudgetCategory | null>(null);
 
   const fixedByCategory = useMemo(() => {
     const map = new Map<string, typeof fixedItems>();
@@ -465,6 +624,8 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
     }
     return map;
   }, [fixedItems]);
+
+  const allocatedTotal = budgets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
 
   return (
     <View>
@@ -482,77 +643,28 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         budgets.map(b => {
           const pct = b.targetPct ?? 0;
           const allocationAmt = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome * pct / 100 : b.monthlyLimit;
-          const floorPct = allocationAmt > 0 ? Math.min(b.monthlyFloor / allocationAmt, 1) : 0;
-          const catFixed = fixedByCategory.get(b.id) ?? [];
-          const expanded = expandedBuckets.has(b.id);
+          const isHighlighted = b.id === highlightId;
 
           return (
-            <View key={b.id} style={s.bucketCard}>
-              <TouchableOpacity style={s.bucketCardTop} onPress={() => toggleBucket(b.id)} onLongPress={() => handleDeleteBudget(b.id, b.name)}>
-                <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
-                <View style={{ flex: 1 }}>
-                  <View style={s.bucketCardRow}>
-                    <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
-                    <View style={s.bucketPctWrap}>
-                      <TextInput
-                        style={s.bucketPctInput}
-                        value={editingPcts[b.id] ?? ''}
-                        onChangeText={v => setEditingPcts(prev => ({ ...prev, [b.id]: v }))}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor="#334155"
-                      />
-                      <Text style={s.bucketPctSymbol}>%</Text>
-                    </View>
-                  </View>
-                  <Text style={s.bucketCardSub}>{fmt(allocationAmt)}/mo · floor {fmt(b.monthlyFloor)}</Text>
-                  {/* Allocation bar with floor marker */}
-                  <View style={s.allocBarTrack}>
-                    <View style={[s.allocBarFloor, { width: `${floorPct * 100}%`, backgroundColor: b.color + '60' }]} />
-                    <View style={[s.allocBarVariable, { width: `${(1 - floorPct) * 100}%`, backgroundColor: b.color }]} />
-                  </View>
-                  {floorPct > 0 && (
-                    <View style={[s.floorMarker, { left: `${floorPct * 100}%` as any }]} />
-                  )}
+            <TouchableOpacity
+              key={b.id}
+              style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted]}
+              onPress={() => setDetailBudget(b)}
+              activeOpacity={0.75}
+            >
+              <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
+              <View style={{ flex: 1 }}>
+                <View style={s.bucketCardRow}>
+                  <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
+                  <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
                 </View>
-                <Text style={[s.chevron, { marginLeft: 8 }]}>{expanded ? '−' : '+'}</Text>
-              </TouchableOpacity>
-
-              {expanded && (
-                <View style={s.bucketExpanded}>
-                  {catFixed.length === 0 ? (
-                    <Text style={s.txnEmpty}>No fixed charges detected in this bucket.</Text>
-                  ) : (
-                    catFixed.map(fi => (
-                      <View key={fi.id} style={s.fixedItemRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.fixedItemName}>{fi.merchantName}</Text>
-                          <Text style={s.fixedItemSub}>
-                            Detected {fmt(fi.detectedAmount)}
-                            {fi.confirmedAmount != null ? ` · Confirmed ${fmt(fi.confirmedAmount)}` : ''}
-                            {fi.needsReview ? ' · CHANGED' : ''}
-                          </Text>
-                        </View>
-                        {fi.isConfirmed && !fi.needsReview ? (
-                          <View style={s.confirmedChip}>
-                            <Text style={s.confirmedChipText}>Confirmed</Text>
-                          </View>
-                        ) : (
-                          <View style={s.fixedItemActions}>
-                            <TouchableOpacity onPress={() => handleConfirmFixed(fi.id, fi.categoryId)} style={s.confirmBtn}>
-                              <Text style={s.confirmBtnText}>{fi.needsReview ? 'Accept' : 'Confirm'}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleDismissFixed(fi.id)} style={s.dismissBtn}>
-                              <Text style={s.dismissBtnText}>Dismiss</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                    ))
-                  )}
-                </View>
-              )}
-            </View>
+                <Text style={s.bucketCardSub}>
+                  {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
+                  {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
+                </Text>
+              </View>
+              <Text style={s.chevron}>›</Text>
+            </TouchableOpacity>
           );
         })
       )}
@@ -567,9 +679,16 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={s.savePctsBtn} onPress={handleSavePcts} disabled={savingPcts}>
-        <Text style={s.savePctsText}>{savingPcts ? 'Saving…' : 'Save Allocations'}</Text>
-      </TouchableOpacity>
+      <BucketDetailSheet
+        visible={detailBudget != null}
+        budget={detailBudget}
+        fixedItems={detailBudget ? (fixedByCategory.get(detailBudget.id) ?? []) : []}
+        confirmedMonthlyIncome={confirmedMonthlyIncome}
+        onClose={() => setDetailBudget(null)}
+        onSaved={() => { onReload(detailBudget?.id); }}
+        onDeleted={onReload}
+        onReloadFixed={reloadFixed}
+      />
 
       <AddBudgetModal
         visible={showBudgetModal}
@@ -775,21 +894,36 @@ const s = StyleSheet.create({
   barFill: { height: 4, borderRadius: 4 },
 
   // Bucket cards (planning)
-  bucketCard: { backgroundColor: '#0d1526', borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
-  bucketCardTop: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  bucketCard: { backgroundColor: '#0d1526', borderRadius: 10, marginBottom: 8, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 12 },
+  bucketCardHighlighted: { borderWidth: 1, borderColor: '#6366f1' },
   bucketAccentBar: { width: 3, height: 36, borderRadius: 2, marginRight: 10 },
   bucketCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bucketCardName: { fontSize: 13, color: '#cbd5e1', fontWeight: '500' },
-  bucketCardSub: { fontSize: 10, color: '#475569', marginTop: 2, marginBottom: 6 },
-  allocBarTrack: { flexDirection: 'row', height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: '#1e293b' },
-  allocBarFloor: { height: 5 },
-  allocBarVariable: { height: 5 },
-  floorMarker: { position: 'absolute', bottom: 0, width: 2, height: 10, backgroundColor: '#f1f5f9', borderRadius: 1 },
-  bucketExpanded: { borderTopWidth: 1, borderTopColor: '#1e293b', padding: 12 },
-  bucketPctWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  bucketPctInput: { backgroundColor: '#1e293b', borderRadius: 6, padding: 6, color: '#a5b4fc', fontSize: 14, width: 52, textAlign: 'right' },
-  bucketPctSymbol: { fontSize: 12, color: '#475569' },
-  chevron: { fontSize: 18, color: '#475569' },
+  bucketCardSub: { fontSize: 10, color: '#475569', marginTop: 2 },
+  bucketPctDisplay: { fontSize: 13, color: '#a5b4fc', fontWeight: '600', fontVariant: ['tabular-nums'] },
+  chevron: { fontSize: 18, color: '#334155', marginLeft: 8 },
+
+  // Bucket detail sheet
+  detailContent: { padding: 24, paddingBottom: 48 },
+  detailHandle: { width: 40, height: 4, backgroundColor: '#334155', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  detailTitle: { fontSize: 18, color: '#f1f5f9', fontWeight: '600', flex: 1 },
+  detailSummaryRow: { flexDirection: 'row', backgroundColor: '#0d1526', borderRadius: 10, padding: 14, marginBottom: 20, gap: 8 },
+  detailSummaryItem: { flex: 1 },
+  detailSummaryLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5 },
+  detailSummaryValue: { fontSize: 16, color: '#f1f5f9', fontWeight: '700', marginTop: 4, fontVariant: ['tabular-nums'] },
+  detailLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 8 },
+  detailInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  detailInput: { backgroundColor: '#1e293b', borderRadius: 8, padding: 12, color: '#f1f5f9', fontSize: 16, flex: 1 },
+  detailInputPrefix: { fontSize: 16, color: '#475569' },
+  detailInputSuffix: { fontSize: 16, color: '#475569' },
+  detailInputHint: { fontSize: 12, color: '#475569' },
+  detailFloorHint: { fontSize: 11, color: '#475569', marginBottom: 4 },
+  detailFloorError: { fontSize: 11, color: '#ef4444', marginBottom: 8 },
+  detailDeleteBtn: { borderWidth: 1, borderColor: '#7f1d1d', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 8 },
+  detailDeleteText: { color: '#ef4444', fontWeight: '600', fontSize: 14 },
+  detailCancelBtn: { padding: 14, alignItems: 'center', marginTop: 4 },
+  detailCancelText: { color: '#475569', fontSize: 14 },
 
   // Fixed items
   fixedItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1a2540' },
