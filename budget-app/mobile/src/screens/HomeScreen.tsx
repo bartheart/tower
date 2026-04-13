@@ -173,7 +173,8 @@ export default function HomeScreen() {
   );
   const recent = showAll ? sorted : sorted.slice(0, 8);
 
-  const tileCount = 2 + budgets.length;
+  // Budget tiles only (total + per-category). Score tile is always shown above.
+  const budgetTileCount = 1 + budgets.length;
   const [tileIndex, setTileIndex] = useState(0);
 
   // Full-screen width for each tile — pagingEnabled snaps exactly one tile at a time
@@ -221,11 +222,21 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Tile carousel — full-width tiles, pagingEnabled snaps one tile per swipe */}
-        <Text style={s.carouselLabel}>MY PLAN · swipe to explore →</Text>
+        {/* Wellness score tile — always visible, slightly smaller, sits above budget carousel */}
+        <ScoreTile
+          width={width - 32}
+          score={wellness.score}
+          history={wellness.history}
+          delta={wellness.delta}
+          status={wellness.status}
+          statusColor={wellness.statusColor}
+          onPress={goToReport}
+        />
+
+        {/* Budget tile carousel — total + per-category, swipe left */}
+        <Text style={s.carouselLabel}>MY BUDGETS · swipe →</Text>
         <FlatList
           data={[
-            { type: 'score' as const },
             { type: 'total' as const },
             ...budgets.map(b => ({ type: 'budget' as const, budget: b })),
           ]}
@@ -237,19 +248,6 @@ export default function HomeScreen() {
             setTileIndex(Math.round(e.nativeEvent.contentOffset.x / TILE_WIDTH));
           }}
           renderItem={({ item }) => {
-            if (item.type === 'score') {
-              return (
-                <ScoreTile
-                  width={TILE_WIDTH}
-                  score={wellness.score}
-                  history={wellness.history}
-                  delta={wellness.delta}
-                  status={wellness.status}
-                  statusColor={wellness.statusColor}
-                  onPress={goToReport}
-                />
-              );
-            }
             if (item.type === 'total') {
               return (
                 <BudgetTile
@@ -271,14 +269,13 @@ export default function HomeScreen() {
               />
             );
           }}
-          // Extend FlatList to full screen width, overriding the ScrollView's padding
           style={{ marginHorizontal: -16 }}
           decelerationRate="fast"
         />
 
-        {/* Page dots */}
+        {/* Page dots — budget tiles only */}
         <View style={s.dotsRow}>
-          {Array.from({ length: tileCount }).map((_, i) => (
+          {Array.from({ length: budgetTileCount }).map((_, i) => (
             <View key={i} style={[s.dot, i === tileIndex && s.dotActive]} />
           ))}
         </View>
@@ -331,15 +328,15 @@ export default function HomeScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const SCORE_H = 90;
 const TILE_H = 140;
 
 const t = StyleSheet.create({
   scoreTile: {
-    height: TILE_H, backgroundColor: '#1e293b',
-    borderTopWidth: 1, borderBottomWidth: 1,
-    borderTopColor: '#f59e0b22', borderBottomColor: '#f59e0b22',
+    height: SCORE_H, backgroundColor: '#1e293b',
+    borderRadius: 10, borderWidth: 1, borderColor: '#f59e0b22',
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 20, marginBottom: 10,
     overflow: 'hidden',
   },
   scoreLeft: { flex: 1 },
@@ -377,7 +374,7 @@ const s = StyleSheet.create({
   toggleBtnActive: { backgroundColor: '#334155' },
   toggleText: { fontSize: 9, color: '#475569' },
   toggleTextActive: { color: '#f1f5f9', fontWeight: '600' },
-  carouselLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 8 },
+  carouselLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 8, marginTop: 4 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8, marginBottom: 14 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#334155' },
   dotActive: { backgroundColor: '#6366f1' },
