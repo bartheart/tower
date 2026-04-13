@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
   RefreshControl, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget } from '../hooks/useBudgets';
 import { useGoals, createGoal, updateGoalProgress, deleteGoal } from '../hooks/useGoals';
 import { useCurrentPeriodTransactions, useMonthlyIncome } from '../hooks/useTransactions';
@@ -14,16 +15,6 @@ import Transaction from '../db/models/Transaction';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-}
-
-function ProgressBar({ ratio, color = '#22c55e' }: { ratio: number; color?: string }) {
-  const clamped = Math.min(1, ratio);
-  const barColor = ratio > 1 ? '#ef4444' : ratio > 0.9 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : color;
-  return (
-    <View style={{ backgroundColor: '#1e293b', borderRadius: 99, height: 4, marginTop: 6 }}>
-      <View style={{ backgroundColor: barColor, width: `${clamped * 100}%`, height: '100%', borderRadius: 99 }} />
-    </View>
-  );
 }
 
 const EMOJI_OPTIONS = ['💰','🏠','🚗','🍔','✈️','🎮','👕','💊','📱','🎓','🐶','☕','🛒','🍕','🏋️'];
@@ -66,6 +57,62 @@ function useCategoryOptions(transactions: Transaction[]): string[] {
     }
     return Array.from(set).sort();
   }, [transactions]);
+}
+
+// ─── Expandable Budget Row (Report view) ────────────────────────────────────
+
+function BudgetReportRow({ budget, transactions }: {
+  budget: ReturnType<typeof useBudgets>['budgets'][0];
+  transactions: Transaction[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const ratio = budget.monthlyLimit > 0 ? budget.spent / budget.monthlyLimit : 0;
+  const barColor = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : budget.color;
+
+  const catTxns = useMemo(() =>
+    transactions
+      .filter(t => t.amount > 0 && !t.pending &&
+        (t.categoryL1 === budget.name || t.categoryL2 === budget.name))
+      .sort((a, b) => b.date.localeCompare(a.date)),
+    [transactions, budget.name]
+  );
+
+  return (
+    <View style={s.reportRow}>
+      <TouchableOpacity style={s.reportRowTop} onPress={() => setExpanded(v => !v)}>
+        <View style={s.reportRowLeft}>
+          <View style={[s.colorDot, { backgroundColor: budget.color }]} />
+          <Text style={s.reportName}>{budget.name}</Text>
+        </View>
+        <View style={s.reportRowRight}>
+          <Text style={[s.reportAmount, ratio > 1 && { color: '#ef4444' }]}>
+            {fmt(budget.spent)}{ratio > 1 ? '  !' : ''}
+          </Text>
+          <Text style={s.chevronInline}>{expanded ? '  −' : '  +'}</Text>
+        </View>
+      </TouchableOpacity>
+      <View style={s.barTrack}>
+        <View style={[s.barFill, { width: `${Math.min(ratio, 1) * 100}%`, backgroundColor: barColor }]} />
+      </View>
+      {expanded && (
+        <View style={s.txnList}>
+          {catTxns.length === 0 ? (
+            <Text style={s.txnEmpty}>No transactions in this category.</Text>
+          ) : (
+            catTxns.map(t => (
+              <View key={t.id} style={s.txnListRow}>
+                <View style={s.txnListLeft}>
+                  <Text style={s.txnListMerchant}>{t.merchantName}</Text>
+                  <Text style={s.txnListDate}>{t.date}</Text>
+                </View>
+                <Text style={s.txnListAmount}>{fmt(t.amount)}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
 }
 
 // ─── Add Budget Modal ─────────────────────────────────────────────────────────
@@ -212,39 +259,14 @@ function AddGoalModal({ visible, onClose, onSaved }: {
   );
 }
 
-// ─── Sankey Full Screen Modal ─────────────────────────────────────────────────
-
-function SankeyModal({ visible, onClose, transactions, monthlyIncome }: {
-  visible: boolean; onClose: () => void; transactions: Transaction[]; monthlyIncome: number;
-}) {
-  const { width } = useWindowDimensions();
-  const sankeyData = useMemo(() => buildSankeyData(transactions, monthlyIncome), [transactions, monthlyIncome]);
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#0f172a', padding: 16 }}>
-        <View style={m.handle} />
-        <Text style={[m.title, { marginBottom: 16 }]}>Where It Went</Text>
-        {sankeyData.nodes.length > 1 ? (
-          <SankeyChart data={sankeyData} width={width - 32} height={320} />
-        ) : (
-          <Text style={{ color: '#475569', textAlign: 'center', marginTop: 40 }}>
-            Not enough data to show the flow chart yet.
-          </Text>
-        )}
-        <TouchableOpacity style={[m.cancelBtn, { marginTop: 24 }]} onPress={onClose}>
-          <Text style={m.cancelBtnText}>Close</Text>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
-}
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type PlanView = 'report' | 'planning';
 
 export default function PlanScreen() {
   const { top } = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const route = useRoute<any>();
   const transactions = useCurrentPeriodTransactions('month');
   const { budgets, reload: reloadBudgets } = useBudgets(transactions);
   const { goals, reload: reloadGoals } = useGoals();
@@ -252,8 +274,10 @@ export default function PlanScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState<PlanView>('report');
 
-  // Report section
-  const [showSankey, setShowSankey] = useState(false);
+  // Respond to navigation params from Home tile tap
+  useEffect(() => {
+    if (route.params?.view) setView(route.params.view);
+  }, [route.params?.view]);
 
   // Planning section accordions
   const [bucketsOpen, setBucketsOpen] = useState(false);
@@ -266,6 +290,8 @@ export default function PlanScreen() {
   // Modals
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
+
+  const sankeyData = useMemo(() => buildSankeyData(transactions, monthlyIncome), [transactions, monthlyIncome]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -348,49 +374,54 @@ export default function PlanScreen() {
         ))}
       </View>
 
-      {/* ��─ REPORT VIEW ────────────────────────────────── */}
+      {/* ── REPORT VIEW ──────────────────────────────────── */}
       {view === 'report' && (
         <>
-          <Text style={s.sectionLabel}>WHERE IT WENT · this month</Text>
+          {/* Inline Sankey — pinch to zoom */}
+          <Text style={s.sectionLabel}>FLOW ANALYSIS · this month</Text>
+          <View style={s.sankeyContainer}>
+            {sankeyData.nodes.length > 1 ? (
+              <ScrollView
+                style={{ height: 280 }}
+                minimumZoomScale={1}
+                maximumZoomScale={4}
+                bouncesZoom
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ alignItems: 'flex-start' }}
+              >
+                <SankeyChart data={sankeyData} width={width - 32} height={260} />
+              </ScrollView>
+            ) : (
+              <Text style={s.emptyHint}>No data yet — transactions will appear here once synced.</Text>
+            )}
+            {sankeyData.nodes.length > 1 && (
+              <Text style={s.zoomHint}>Pinch to zoom</Text>
+            )}
+          </View>
 
+          {/* Budget breakdown — expandable rows */}
+          <Text style={[s.sectionLabel, { marginTop: 20 }]}>BREAKDOWN</Text>
           {budgets.length === 0 ? (
-            <Text style={s.emptyHint}>Add budgets in Planning to see your report.</Text>
+            <Text style={s.emptyHint}>Add budgets in Planning to see your breakdown.</Text>
           ) : (
-            budgets.map(b => {
-              const ratio = b.monthlyLimit > 0 ? b.spent / b.monthlyLimit : 0;
-              const barColor = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : b.color;
-              return (
-                <View key={b.id} style={s.reportRow}>
-                  <View style={s.reportRowTop}>
-                    <Text style={s.reportName}>{b.emoji} {b.name}</Text>
-                    <Text style={[s.reportAmount, ratio > 1 && { color: '#ef4444' }]}>
-                      {fmt(b.spent)}{ratio > 1 ? ' ⚠' : ''}
-                    </Text>
-                  </View>
-                  <View style={s.barTrack}>
-                    <View style={[s.barFill, { width: `${Math.min(ratio, 1) * 100}%`, backgroundColor: barColor }]} />
-                  </View>
-                </View>
-              );
-            })
+            budgets.map(b => (
+              <BudgetReportRow key={b.id} budget={b} transactions={transactions} />
+            ))
           )}
-
-          <TouchableOpacity style={s.sankeyBtn} onPress={() => setShowSankey(true)}>
-            <Text style={s.sankeyBtnText}>Open full flow analysis →</Text>
-          </TouchableOpacity>
         </>
       )}
 
-      {/* ── PLANNING VIEW ──────────────────────────────── */}
+      {/* ── PLANNING VIEW ────────────────────────────────── */}
       {view === 'planning' && (
         <>
           {/* Income Buckets accordion */}
           <TouchableOpacity style={s.accordion} onPress={openBucketEdit}>
             <View>
-              <Text style={s.accordionTitle}>💰 Income Buckets</Text>
+              <Text style={s.accordionTitle}>Income Buckets</Text>
               <Text style={s.accordionSub}>Set % per category · drives wellness score</Text>
             </View>
-            <Text style={s.chevron}>{bucketsOpen ? '⌃' : '⌄'}</Text>
+            <Text style={s.chevron}>{bucketsOpen ? '−' : '+'}</Text>
           </TouchableOpacity>
 
           {bucketsOpen && (
@@ -404,8 +435,11 @@ export default function PlanScreen() {
                       style={s.bucketDelete}
                       onLongPress={() => handleDeleteBudget(b.id, b.name)}
                     >
-                      <Text style={s.bucketName}>{b.emoji} {b.name}</Text>
-                      <Text style={s.bucketLimit}>{fmt(b.monthlyLimit)}/mo</Text>
+                      <View style={[s.bucketColorBar, { backgroundColor: b.color }]} />
+                      <View>
+                        <Text style={s.bucketName}>{b.name}</Text>
+                        <Text style={s.bucketLimit}>{fmt(b.monthlyLimit)}/mo</Text>
+                      </View>
                     </TouchableOpacity>
                     <View style={s.bucketPctWrap}>
                       <TextInput
@@ -428,7 +462,7 @@ export default function PlanScreen() {
                   {monthlyIncome > 0 && ` · ${fmt(monthlyIncome * allocatedTotal / 100)}/mo`}
                 </Text>
                 <TouchableOpacity style={s.addBucketBtn} onPress={() => setShowBudgetModal(true)}>
-                  <Text style={s.addBucketText}>＋ Add bucket</Text>
+                  <Text style={s.addBucketText}>+ Add bucket</Text>
                 </TouchableOpacity>
               </View>
 
@@ -441,10 +475,10 @@ export default function PlanScreen() {
           {/* Savings Goals accordion */}
           <TouchableOpacity style={[s.accordion, { marginTop: 8 }]} onPress={() => setGoalsOpen(v => !v)}>
             <View>
-              <Text style={s.accordionTitle}>🎯 Savings Goals</Text>
+              <Text style={s.accordionTitle}>Savings Goals</Text>
               <Text style={s.accordionSub}>{goals.length} active goal{goals.length !== 1 ? 's' : ''}</Text>
             </View>
-            <Text style={s.chevron}>{goalsOpen ? '⌃' : '⌄'}</Text>
+            <Text style={s.chevron}>{goalsOpen ? '−' : '+'}</Text>
           </TouchableOpacity>
 
           {goalsOpen && (
@@ -460,10 +494,12 @@ export default function PlanScreen() {
                     onLongPress={() => handleDeleteGoal(g.id, g.name)}
                   >
                     <View style={s.goalRowTop}>
-                      <Text style={s.reportName}>{g.emoji} {g.name}</Text>
+                      <Text style={s.reportName}>{g.name}</Text>
                       <Text style={s.goalPct}>{g.progressPercent}%</Text>
                     </View>
-                    <ProgressBar ratio={g.progressPercent / 100} color="#6366f1" />
+                    <View style={s.barTrack}>
+                      <View style={[s.barFill, { width: `${Math.min(g.progressPercent / 100, 1) * 100}%`, backgroundColor: '#6366f1' }]} />
+                    </View>
                     <Text style={s.goalSub}>
                       {fmt(g.currentAmount)} of {fmt(g.targetAmount)}
                       {g.monthsLeft !== null ? ` · ~${g.monthsLeft}mo left` : ''}
@@ -472,7 +508,7 @@ export default function PlanScreen() {
                 ))
               )}
               <TouchableOpacity style={s.addBucketBtn} onPress={() => setShowGoalModal(true)}>
-                <Text style={s.addBucketText}>＋ Add goal</Text>
+                <Text style={s.addBucketText}>+ Add goal</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -490,12 +526,6 @@ export default function PlanScreen() {
         onClose={() => setShowGoalModal(false)}
         onSaved={reloadGoals}
       />
-      <SankeyModal
-        visible={showSankey}
-        onClose={() => setShowSankey(false)}
-        transactions={transactions}
-        monthlyIncome={monthlyIncome}
-      />
     </ScrollView>
   );
 }
@@ -512,25 +542,46 @@ const s = StyleSheet.create({
   toggleTextActive: { color: '#f1f5f9', fontWeight: '700' },
   sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
   emptyHint: { fontSize: 12, color: '#334155', textAlign: 'center', paddingVertical: 16 },
-  reportRow: { marginBottom: 12 },
-  reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  sankeyContainer: {
+    backgroundColor: '#0d1526',
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  zoomHint: { fontSize: 9, color: '#334155', textAlign: 'right', marginTop: 4, marginRight: 4 },
+  // Report rows
+  reportRow: { marginBottom: 10, backgroundColor: '#0d1526', borderRadius: 8, padding: 12 },
+  reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  reportRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  reportRowRight: { flexDirection: 'row', alignItems: 'center' },
+  colorDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   reportName: { fontSize: 13, color: '#cbd5e1' },
   reportAmount: { fontSize: 13, color: '#f1f5f9', fontVariant: ['tabular-nums'] },
-  barTrack: { backgroundColor: '#1e293b', borderRadius: 4, height: 6 },
-  barFill: { height: 6, borderRadius: 4 },
-  sankeyBtn: { marginTop: 12, backgroundColor: '#1e293b', borderRadius: 8, padding: 12, alignItems: 'center' },
-  sankeyBtnText: { fontSize: 12, color: '#6366f1' },
+  chevronInline: { fontSize: 13, color: '#475569' },
+  barTrack: { backgroundColor: '#1e293b', borderRadius: 4, height: 4 },
+  barFill: { height: 4, borderRadius: 4 },
+  // Transaction list inside expanded row
+  txnList: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#1e293b', paddingTop: 8 },
+  txnEmpty: { fontSize: 11, color: '#334155', paddingVertical: 8 },
+  txnListRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  txnListLeft: { flex: 1 },
+  txnListMerchant: { fontSize: 12, color: '#94a3b8' },
+  txnListDate: { fontSize: 10, color: '#475569', marginTop: 1 },
+  txnListAmount: { fontSize: 12, color: '#cbd5e1', fontVariant: ['tabular-nums'] },
+  // Accordion
   accordion: {
     backgroundColor: '#1e293b', borderRadius: 10, padding: 14,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 1,
   },
-  accordionTitle: { fontSize: 13, color: '#f1f5f9', fontWeight: '600' },
+  accordionTitle: { fontSize: 14, color: '#f1f5f9', fontWeight: '600' },
   accordionSub: { fontSize: 10, color: '#475569', marginTop: 2 },
-  chevron: { fontSize: 16, color: '#475569' },
+  chevron: { fontSize: 18, color: '#475569', fontWeight: '300' },
   accordionBody: { backgroundColor: '#141c29', borderRadius: 10, padding: 12, marginBottom: 8 },
   bucketRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-  bucketDelete: { flex: 1 },
+  bucketDelete: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  bucketColorBar: { width: 3, height: 28, borderRadius: 2, marginRight: 10 },
   bucketName: { fontSize: 12, color: '#cbd5e1' },
   bucketLimit: { fontSize: 10, color: '#475569', marginTop: 1 },
   bucketPctWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
@@ -546,9 +597,9 @@ const s = StyleSheet.create({
   savePctsBtn: { backgroundColor: '#6366f1', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 12 },
   savePctsText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   goalRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-  goalRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  goalRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   goalPct: { fontSize: 12, color: '#a5b4fc' },
-  goalSub: { fontSize: 10, color: '#475569', marginTop: 4 },
+  goalSub: { fontSize: 10, color: '#475569', marginTop: 6 },
 });
 
 const m = StyleSheet.create({
