@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import Svg, { Polyline, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import {
   useCurrentPeriodTransactions, useAccounts, useTotalBalance,
   useMonthlyIncome, useMonthlySpend, Period,
@@ -46,13 +47,15 @@ function Sparkline({ history, color }: { history: number[]; color: string }) {
 
 // ─── Tile: Wellness Score ─────────────────────────────────────────────────────
 
-function ScoreTile({ score, history, delta, status, statusColor, width }: {
-  score: number; history: number[]; delta: number; status: string; statusColor: string; width: number;
+function ScoreTile({ score, history, delta, status, statusColor, width, onPress }: {
+  score: number; history: number[]; delta: number;
+  status: string; statusColor: string; width: number;
+  onPress: () => void;
 }) {
   return (
-    <View style={[t.scoreTile, { width }]}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[t.scoreTile, { width }]}>
       <View style={t.scoreLeft}>
-        <Text style={t.scoreLabel}>⭐ WELLNESS</Text>
+        <Text style={t.scoreLabel}>WELLNESS SCORE</Text>
         <Text style={t.scoreNumber}>{score}</Text>
         <Text style={[t.scoreStatus, { color: statusColor }]}>{status}</Text>
       </View>
@@ -63,22 +66,23 @@ function ScoreTile({ score, history, delta, status, statusColor, width }: {
           {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)} pts
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 // ─── Tile: Budget ─────────────────────────────────────────────────────────────
 
-function BudgetTile({ budget, totalRemaining, period, width, isTotal }: {
+function BudgetTile({ budget, totalRemaining, period, width, isTotal, onPress }: {
   budget?: BudgetCategory;
   totalRemaining?: number;
   period: Period;
   width: number;
   isTotal: boolean;
+  onPress: () => void;
 }) {
   const color = isTotal ? '#6366f1' : (budget?.color ?? '#6366f1');
   const bgStart = isTotal ? '#1e1b4b' : '#0f172a';
-  const label = isTotal ? 'ALL BUDGETS' : `${budget?.emoji ?? ''} ${budget?.name ?? ''}`;
+  const label = isTotal ? 'ALL BUDGETS' : (budget?.name ?? '');
   const remaining = isTotal
     ? totalRemaining ?? 0
     : (budget ? budget.monthlyLimit - budget.spent : 0);
@@ -90,7 +94,11 @@ function BudgetTile({ budget, totalRemaining, period, width, isTotal }: {
     : ratio > 0.9 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : color;
 
   return (
-    <View style={[t.budgetTile, { width, borderColor: `${color}22` }]}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[t.budgetTile, { width, borderColor: `${color}22` }]}
+    >
       <View style={[t.budgetGradient, { backgroundColor: bgStart }]}>
         <Text style={[t.budgetLabel, { color }]}>{label}</Text>
         <Text style={t.budgetAmount}>{fmt(Math.max(0, remaining))}</Text>
@@ -106,11 +114,11 @@ function BudgetTile({ budget, totalRemaining, period, width, isTotal }: {
           <View style={[t.barFill, { width: `${(ratio ?? 0) * 100}%`, backgroundColor: barColor }]} />
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-// ─── Transaction Detail Modal ───────────────────────────────────��─────────────
+// ─── Transaction Detail Modal ─────────────────────────────────────────────────
 
 function TxnDetailModal({ txn, onClose }: { txn: Transaction | null; onClose: () => void }) {
   if (!txn) return null;
@@ -143,6 +151,7 @@ function TxnDetailModal({ txn, onClose }: { txn: Transaction | null; onClose: ()
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { top } = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const [period, setPeriod] = useState<Period>('month');
   const transactions = useCurrentPeriodTransactions(period);
   const { accounts, loading: accountsLoading } = useAccounts();
@@ -153,7 +162,6 @@ export default function HomeScreen() {
   const monthlySpend = useMonthlySpend(transactions);
 
   const wellness = useWellnessScore(transactions, budgets, monthlyIncome, 7);
-
   const totalRemaining = budgets.reduce((s, b) => s + b.monthlyLimit, 0) - monthlySpend;
 
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
@@ -167,7 +175,11 @@ export default function HomeScreen() {
 
   const tileCount = 2 + budgets.length;
   const [tileIndex, setTileIndex] = useState(0);
-  const TILE_WIDTH = width - 32;
+
+  // Full-screen width for each tile — pagingEnabled snaps exactly one tile at a time
+  const TILE_WIDTH = width;
+
+  const goToReport = () => navigation.navigate('Plan', { view: 'report' });
 
   if (accountsLoading) {
     return <View style={[s.container, s.center]}><ActivityIndicator color="#6366f1" /></View>;
@@ -209,7 +221,7 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Tile carousel */}
+        {/* Tile carousel — full-width tiles, pagingEnabled snaps one tile per swipe */}
         <Text style={s.carouselLabel}>MY PLAN · swipe to explore →</Text>
         <FlatList
           data={[
@@ -234,6 +246,7 @@ export default function HomeScreen() {
                   delta={wellness.delta}
                   status={wellness.status}
                   statusColor={wellness.statusColor}
+                  onPress={goToReport}
                 />
               );
             }
@@ -244,6 +257,7 @@ export default function HomeScreen() {
                   isTotal
                   totalRemaining={totalRemaining}
                   period={period}
+                  onPress={goToReport}
                 />
               );
             }
@@ -253,12 +267,12 @@ export default function HomeScreen() {
                 isTotal={false}
                 budget={item.budget}
                 period={period}
+                onPress={goToReport}
               />
             );
           }}
+          // Extend FlatList to full screen width, overriding the ScrollView's padding
           style={{ marginHorizontal: -16 }}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-          snapToInterval={TILE_WIDTH}
           decelerationRate="fast"
         />
 
@@ -322,24 +336,25 @@ const TILE_H = 140;
 const t = StyleSheet.create({
   scoreTile: {
     height: TILE_H, backgroundColor: '#1e293b',
-    borderRadius: 12, borderWidth: 1, borderColor: '#f59e0b22',
+    borderTopWidth: 1, borderBottomWidth: 1,
+    borderTopColor: '#f59e0b22', borderBottomColor: '#f59e0b22',
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     overflow: 'hidden',
   },
   scoreLeft: { flex: 1 },
-  scoreLabel: { fontSize: 8, color: '#f59e0b', letterSpacing: 1.5, marginBottom: 2 },
+  scoreLabel: { fontSize: 9, color: '#f59e0b', letterSpacing: 1.5, marginBottom: 2 },
   scoreNumber: { fontSize: 26, fontWeight: '800', color: '#e2e8f0', letterSpacing: -1 },
   scoreStatus: { fontSize: 9, marginTop: 1 },
   scoreRight: { alignItems: 'flex-end' },
   sparkLabel: { fontSize: 7, color: '#475569', marginBottom: 3 },
   scoreDelta: { fontSize: 8, marginTop: 3 },
   budgetTile: {
-    height: TILE_H, borderRadius: 12, borderWidth: 1,
+    height: TILE_H, borderTopWidth: 1, borderBottomWidth: 1,
     overflow: 'hidden',
   },
   budgetGradient: {
-    flex: 1, padding: 16, justifyContent: 'center',
+    flex: 1, paddingHorizontal: 20, paddingVertical: 16, justifyContent: 'center',
   },
   budgetLabel: { fontSize: 9, letterSpacing: 1.5, marginBottom: 4 },
   budgetAmount: { fontSize: 36, fontWeight: '800', color: '#e2e8f0', letterSpacing: -2, lineHeight: 38 },
