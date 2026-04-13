@@ -205,8 +205,10 @@ export default function HomeScreen() {
   // Full-screen width for each tile — pagingEnabled snaps exactly one tile at a time
   const TILE_WIDTH = width;
 
-  const goToReport = () => navigation.navigate('Plan', { view: 'report' });
-  const goToIncome = () => navigation.navigate('Plan', { view: 'planning', planningTab: 'income' });
+  const goToReport = (budgetId?: string) =>
+    navigation.navigate('Report', { budgetId, period });
+  const goToIncome = () =>
+    navigation.navigate('Tabs', { screen: 'Plan', params: { planningTab: 'income' } });
 
   if (accountsLoading) {
     return <View style={[s.container, s.center]}><ActivityIndicator color="#6366f1" /></View>;
@@ -280,7 +282,7 @@ export default function HomeScreen() {
                   isTotal
                   totalRemaining={totalRemaining}
                   period={period}
-                  onPress={goToReport}
+                  onPress={() => goToReport(undefined)}
                 />
               );
             }
@@ -290,7 +292,7 @@ export default function HomeScreen() {
                 isTotal={false}
                 budget={item.budget}
                 period={period}
-                onPress={goToReport}
+                onPress={() => goToReport(item.budget.id)}
               />
             );
           }}

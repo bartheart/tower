@@ -1,19 +1,17 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
   RefreshControl, useWindowDimensions, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget } from '../hooks/useBudgets';
 import { useGoals, updateGoalProgress } from '../hooks/useGoals';
-import { useCurrentPeriodTransactions, useMonthlyIncome } from '../hooks/useTransactions';
+import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
 import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSource, deleteIncomeSource } from '../hooks/useIncome';
-import { useFixedItems, confirmFixedItem, dismissFixedItem, updateFixedItemAmount, recomputeFloor } from '../hooks/useFixedItems';
+import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
-import SankeyChart from '../sankey/SankeyChart';
-import { buildSankeyData } from '../sankey/buildGraph';
 import Transaction from '../db/models/Transaction';
 
 function fmt(n: number) {
@@ -47,62 +45,6 @@ function useCategoryOptions(transactions: Transaction[]): string[] {
     }
     return Array.from(set).sort();
   }, [transactions]);
-}
-
-// ─── Expanded Budget Row (Report view) ──────────────────────────────────────
-
-function BudgetReportRow({ budget, transactions }: {
-  budget: ReturnType<typeof useBudgets>['budgets'][0];
-  transactions: Transaction[];
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const ratio = budget.monthlyLimit > 0 ? budget.spent / budget.monthlyLimit : 0;
-  const barColor = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : budget.color;
-
-  const catTxns = useMemo(() =>
-    transactions
-      .filter(t => t.amount > 0 && !t.pending &&
-        (t.categoryL1 === budget.name || t.categoryL2 === budget.name))
-      .sort((a, b) => b.date.localeCompare(a.date)),
-    [transactions, budget.name]
-  );
-
-  return (
-    <View style={s.reportRow}>
-      <TouchableOpacity style={s.reportRowTop} onPress={() => setExpanded(v => !v)}>
-        <View style={s.reportRowLeft}>
-          <View style={[s.colorDot, { backgroundColor: budget.color }]} />
-          <Text style={s.reportName}>{budget.name}</Text>
-        </View>
-        <View style={s.reportRowRight}>
-          <Text style={[s.reportAmount, ratio > 1 && { color: '#ef4444' }]}>
-            {fmt(budget.spent)}{ratio > 1 ? '  !' : ''}
-          </Text>
-          <Text style={s.chevronInline}>{expanded ? '  −' : '  +'}</Text>
-        </View>
-      </TouchableOpacity>
-      <View style={s.barTrack}>
-        <View style={[s.barFill, { width: `${Math.min(ratio, 1) * 100}%`, backgroundColor: barColor }]} />
-      </View>
-      {expanded && (
-        <View style={s.txnList}>
-          {catTxns.length === 0 ? (
-            <Text style={s.txnEmpty}>No transactions in this category.</Text>
-          ) : (
-            catTxns.map(t => (
-              <View key={t.id} style={s.txnListRow}>
-                <View style={s.txnListLeft}>
-                  <Text style={s.txnListMerchant}>{t.merchantName}</Text>
-                  <Text style={s.txnListDate}>{t.date}</Text>
-                </View>
-                <Text style={s.txnListAmount}>{fmt(t.amount)}</Text>
-              </View>
-            ))
-          )}
-        </View>
-      )}
-    </View>
-  );
 }
 
 // ─── Add Budget Modal ─────────────────────────────────────────────────────────
@@ -441,17 +383,28 @@ function IncomeTab({ onReload }: { onReload: () => void }) {
 
 // ─── Buckets Tab ──────────────────────────────────────────────────────────────
 
-function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload }: {
+function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, highlightId }: {
   budgets: ReturnType<typeof useBudgets>['budgets'];
   transactions: Transaction[];
   confirmedMonthlyIncome: number;
-  onReload: () => void;
+  onReload: (savedBudgetId?: string) => void;
+  highlightId?: string;
 }) {
   const { items: fixedItems, pendingReview, reload: reloadFixed } = useFixedItems();
   const [editingPcts, setEditingPcts] = useState<Record<string, string>>({});
   const [savingPcts, setSavingPcts] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(new Set());
+  // Pre-expand highlighted bucket (from Report's "Adjust Plan")
+  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(
+    highlightId ? new Set([highlightId]) : new Set()
+  );
+
+  // Sync expanded set when highlightId changes (e.g. on re-navigate)
+  useEffect(() => {
+    if (highlightId) {
+      setExpandedBuckets(prev => new Set([...prev, highlightId]));
+    }
+  }, [highlightId]);
 
   // Init pct inputs when budgets load
   useEffect(() => {
@@ -477,7 +430,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload }:
           await updateBudget(id, { targetPct: isNaN(pct) || pct <= 0 ? 0 : pct });
         })
       );
-      await onReload();
+      await onReload(highlightId);
     } catch (e: any) {
       Alert.alert('Error saving', e.message);
     } finally { setSavingPcts(false); }
@@ -705,28 +658,24 @@ function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-type PlanView = 'report' | 'planning';
 type PlanningTab = 'buckets' | 'goals' | 'income';
 
 export default function PlanScreen() {
   const { top } = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const transactions = useCurrentPeriodTransactions('month');
   const { budgets, reload: reloadBudgets } = useBudgets(transactions);
   const { confirmedMonthlyIncome, reload: reloadIncome } = useIncome();
-  const monthlyIncome = useMonthlyIncome(transactions);
   const [refreshing, setRefreshing] = useState(false);
-  const [view, setView] = useState<PlanView>('report');
   const [planningTab, setPlanningTab] = useState<PlanningTab>('buckets');
+  const [lastSavedBudgetId, setLastSavedBudgetId] = useState<string | undefined>(undefined);
+  const [showViewImpact, setShowViewImpact] = useState(false);
 
-  // Respond to navigation params from Home tile / income tile tap
+  // Respond to navigation params — deep links from income tile, Report's Adjust Plan, etc.
   useEffect(() => {
-    if (route.params?.view) setView(route.params.view);
     if (route.params?.planningTab) setPlanningTab(route.params.planningTab);
-  }, [route.params?.view, route.params?.planningTab]);
-
-  const sankeyData = useMemo(() => buildSankeyData(transactions, monthlyIncome), [transactions, monthlyIncome]);
+  }, [route.params?.planningTab]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -734,106 +683,77 @@ export default function PlanScreen() {
     setRefreshing(false);
   }, [reloadBudgets, reloadIncome]);
 
-  const handleReload = useCallback(async () => {
+  const handleReload = useCallback(async (savedBudgetId?: string) => {
     await Promise.all([reloadBudgets(), reloadIncome()]);
+    if (savedBudgetId !== undefined) {
+      setLastSavedBudgetId(savedBudgetId);
+      setShowViewImpact(true);
+    }
   }, [reloadBudgets, reloadIncome]);
 
+  const goToReport = () => {
+    setShowViewImpact(false);
+    navigation.navigate('Report', { budgetId: lastSavedBudgetId, period: 'month' });
+  };
+
   return (
-    <ScrollView
-      style={s.container}
-      contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
-    >
-      {/* Report / Planning toggle */}
-      <View style={s.toggle}>
-        {(['report', 'planning'] as PlanView[]).map(v => (
-          <TouchableOpacity
-            key={v}
-            style={[s.toggleBtn, view === v && s.toggleBtnActive]}
-            onPress={() => setView(v)}
-          >
-            <Text style={[s.toggleText, view === v && s.toggleTextActive]}>
-              {v === 'report' ? 'Report' : 'Planning'}
-            </Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={s.container}
+        contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
+      >
+        {/* Three-tab segmented control — the only nav on this screen */}
+        <View style={s.segControl}>
+          {(['buckets', 'goals', 'income'] as PlanningTab[]).map(tab => (
+            <TouchableOpacity
+              key={tab}
+              style={[s.segBtn, planningTab === tab && s.segBtnActive]}
+              onPress={() => setPlanningTab(tab)}
+            >
+              <Text style={[s.segText, planningTab === tab && s.segTextActive]}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {planningTab === 'income' && (
+          <IncomeTab onReload={() => handleReload()} />
+        )}
+        {planningTab === 'buckets' && (
+          <BucketsTab
+            budgets={budgets}
+            transactions={transactions}
+            confirmedMonthlyIncome={confirmedMonthlyIncome}
+            onReload={handleReload}
+            highlightId={route.params?.highlightId}
+          />
+        )}
+        {planningTab === 'goals' && (
+          <GoalsTab
+            budgets={budgets}
+            confirmedMonthlyIncome={confirmedMonthlyIncome}
+            onReload={handleReload}
+          />
+        )}
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* View Impact toast — appears after saving allocations */}
+      {showViewImpact && (
+        <View style={s.viewImpactBar}>
+          <Text style={s.viewImpactText}>Allocations saved</Text>
+          <TouchableOpacity onPress={goToReport} style={s.viewImpactBtn}>
+            <Text style={s.viewImpactBtnText}>View Impact →</Text>
           </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ── REPORT VIEW ──────────────────────────────────── */}
-      {view === 'report' && (
-        <>
-          <Text style={s.sectionLabel}>FLOW ANALYSIS · this month</Text>
-          <View style={s.sankeyContainer}>
-            {sankeyData.nodes.length > 1 ? (
-              <ScrollView
-                style={{ height: 280 }}
-                minimumZoomScale={1}
-                maximumZoomScale={4}
-                bouncesZoom
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ alignItems: 'flex-start' }}
-              >
-                <SankeyChart data={sankeyData} width={width - 32} height={260} />
-              </ScrollView>
-            ) : (
-              <Text style={s.emptyHint}>No data yet — transactions will appear here once synced.</Text>
-            )}
-            {sankeyData.nodes.length > 1 && (
-              <Text style={s.zoomHint}>Pinch to zoom</Text>
-            )}
-          </View>
-
-          <Text style={[s.sectionLabel, { marginTop: 20 }]}>BREAKDOWN</Text>
-          {budgets.length === 0 ? (
-            <Text style={s.emptyHint}>Add budgets in Planning to see your breakdown.</Text>
-          ) : (
-            budgets.map(b => (
-              <BudgetReportRow key={b.id} budget={b} transactions={transactions} />
-            ))
-          )}
-        </>
+          <TouchableOpacity onPress={() => setShowViewImpact(false)} style={s.viewImpactDismiss}>
+            <Text style={s.viewImpactDismissText}>×</Text>
+          </TouchableOpacity>
+        </View>
       )}
-
-      {/* ── PLANNING VIEW ────────────────────────────────── */}
-      {view === 'planning' && (
-        <>
-          {/* Three-tab segmented control */}
-          <View style={s.segControl}>
-            {(['buckets', 'goals', 'income'] as PlanningTab[]).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                style={[s.segBtn, planningTab === tab && s.segBtnActive]}
-                onPress={() => setPlanningTab(tab)}
-              >
-                <Text style={[s.segText, planningTab === tab && s.segTextActive]}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {planningTab === 'income' && (
-            <IncomeTab onReload={handleReload} />
-          )}
-          {planningTab === 'buckets' && (
-            <BucketsTab
-              budgets={budgets}
-              transactions={transactions}
-              confirmedMonthlyIncome={confirmedMonthlyIncome}
-              onReload={handleReload}
-            />
-          )}
-          {planningTab === 'goals' && (
-            <GoalsTab
-              budgets={budgets}
-              confirmedMonthlyIncome={confirmedMonthlyIncome}
-              onReload={handleReload}
-            />
-          )}
-        </>
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -843,42 +763,16 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f172a' },
   content: { padding: 16, paddingBottom: 100 },
 
-  toggle: { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 8, padding: 3, marginBottom: 20 },
-  toggleBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
-  toggleBtnActive: { backgroundColor: '#334155' },
-  toggleText: { fontSize: 13, color: '#475569', fontWeight: '500' },
-  toggleTextActive: { color: '#f1f5f9', fontWeight: '700' },
-
   segControl: { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 8, padding: 3, marginBottom: 16 },
   segBtn: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 6 },
   segBtnActive: { backgroundColor: '#0f172a' },
   segText: { fontSize: 12, color: '#475569', fontWeight: '500' },
   segTextActive: { color: '#a5b4fc', fontWeight: '700' },
 
-  sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
   emptyHint: { fontSize: 12, color: '#334155', textAlign: 'center', paddingVertical: 24 },
-
-  sankeyContainer: { backgroundColor: '#0d1526', borderRadius: 10, padding: 8, marginBottom: 4, overflow: 'hidden' },
-  zoomHint: { fontSize: 9, color: '#334155', textAlign: 'right', marginTop: 4, marginRight: 4 },
-
-  // Report rows
-  reportRow: { marginBottom: 10, backgroundColor: '#0d1526', borderRadius: 8, padding: 12 },
-  reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  reportRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  reportRowRight: { flexDirection: 'row', alignItems: 'center' },
-  colorDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  reportName: { fontSize: 13, color: '#cbd5e1' },
-  reportAmount: { fontSize: 13, color: '#f1f5f9', fontVariant: ['tabular-nums'] },
-  chevronInline: { fontSize: 13, color: '#475569' },
+  txnEmpty: { fontSize: 11, color: '#334155', paddingVertical: 8 },
   barTrack: { backgroundColor: '#1e293b', borderRadius: 4, height: 4 },
   barFill: { height: 4, borderRadius: 4 },
-  txnList: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#1e293b', paddingTop: 8 },
-  txnEmpty: { fontSize: 11, color: '#334155', paddingVertical: 8 },
-  txnListRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
-  txnListLeft: { flex: 1 },
-  txnListMerchant: { fontSize: 12, color: '#94a3b8' },
-  txnListDate: { fontSize: 10, color: '#475569', marginTop: 1 },
-  txnListAmount: { fontSize: 12, color: '#cbd5e1', fontVariant: ['tabular-nums'] },
 
   // Bucket cards (planning)
   bucketCard: { backgroundColor: '#0d1526', borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
@@ -909,6 +803,17 @@ const s = StyleSheet.create({
   allocatedText: { fontSize: 11, color: '#475569', flex: 1 },
   savePctsBtn: { backgroundColor: '#6366f1', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 8, marginBottom: 16 },
   savePctsText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+
+  viewImpactBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#1e293b', borderTopWidth: 1, borderTopColor: '#334155',
+    flexDirection: 'row', alignItems: 'center', padding: 14,
+  },
+  viewImpactText: { flex: 1, fontSize: 13, color: '#94a3b8' },
+  viewImpactBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  viewImpactBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
+  viewImpactDismiss: { padding: 8, marginLeft: 8 },
+  viewImpactDismissText: { fontSize: 18, color: '#475569' },
 
   reviewBanner: { backgroundColor: '#431407', borderRadius: 8, padding: 10, marginBottom: 10 },
   reviewBannerText: { fontSize: 12, color: '#fb923c', fontWeight: '500' },
