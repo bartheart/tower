@@ -248,13 +248,6 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Income tile — taps to Plan > Planning > Income */}
-        <IncomeTile
-          width={width - 32}
-          confirmedMonthlyIncome={confirmedMonthlyIncome}
-          onPress={goToIncome}
-        />
-
         {/* Wellness score tile — always visible, slightly smaller, sits above budget carousel */}
         <ScoreTile
           width={width - 32}
@@ -312,12 +305,17 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* Income / Spent pills */}
+        {/* Income (tappable → income page) / Spent pills */}
         <View style={s.pillRow}>
-          <View style={[s.pill, s.pillIncome]}>
-            <Text style={s.pillLabel}>INCOME</Text>
-            <Text style={[s.pillValue, { color: '#4ade80' }]}>{fmt(monthlyIncome)}</Text>
-          </View>
+          <TouchableOpacity style={[s.pill, s.pillIncome]} onPress={goToIncome} activeOpacity={0.75}>
+            <Text style={s.pillLabel}>MONTHLY INCOME</Text>
+            <Text style={[s.pillValue, { color: '#4ade80' }]}>
+              {confirmedMonthlyIncome > 0 ? fmt(confirmedMonthlyIncome) : fmt(monthlyIncome)}
+            </Text>
+            {confirmedMonthlyIncome === 0 && (
+              <Text style={s.pillHint}>tap to confirm</Text>
+            )}
+          </TouchableOpacity>
           <View style={[s.pill, s.pillNeutral]}>
             <Text style={s.pillLabel}>SPENT</Text>
             <Text style={[s.pillValue, { color: '#f1f5f9' }]}>{fmt(monthlySpend)}</Text>
@@ -425,6 +423,7 @@ const s = StyleSheet.create({
   pillNeutral: { backgroundColor: '#1e293b' },
   pillLabel: { fontSize: 9, color: '#64748b', letterSpacing: 1 },
   pillValue: { fontSize: 15, fontWeight: '600', marginTop: 2 },
+  pillHint: { fontSize: 9, color: '#16a34a', marginTop: 2 },
   recentContainer: { marginBottom: 24 },
   sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
