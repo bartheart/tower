@@ -7,8 +7,11 @@ export interface BudgetCategory {
   name: string;
   emoji: string;
   monthlyLimit: number;
+  monthlyFloor: number;      // sum of confirmed fixed_items for this category
   color: string;
   targetPct: number | null;  // % of income; null = not set / excluded from wellness score
+  isGoal: boolean;
+  goalId: string | null;
   spent: number;
 }
 
@@ -17,8 +20,11 @@ interface SupabaseBudget {
   name: string;
   emoji: string;
   monthly_limit: number;
+  monthly_floor: number;
   color: string;
   target_pct: number | null;
+  is_goal: boolean;
+  goal_id: string | null;
 }
 
 export function useBudgets(transactions: Transaction[]): {
@@ -56,8 +62,11 @@ export function useBudgets(transactions: Transaction[]): {
       name: cat.name,
       emoji: cat.emoji,
       monthlyLimit: cat.monthly_limit,
+      monthlyFloor: cat.monthly_floor ?? 0,
       color: cat.color,
       targetPct: cat.target_pct ?? null,
+      isGoal: cat.is_goal ?? false,
+      goalId: cat.goal_id ?? null,
       spent: spendMap.get(cat.name) ?? 0,
     }));
 
@@ -84,11 +93,12 @@ export async function createBudget(
 
 export async function updateBudget(
   id: string,
-  fields: { monthlyLimit?: number; targetPct?: number }
+  fields: { monthlyLimit?: number; targetPct?: number; monthlyFloor?: number }
 ): Promise<void> {
   const patch: Record<string, number> = {};
   if (fields.monthlyLimit !== undefined) patch.monthly_limit = fields.monthlyLimit;
   if (fields.targetPct !== undefined) patch.target_pct = fields.targetPct;
+  if (fields.monthlyFloor !== undefined) patch.monthly_floor = fields.monthlyFloor;
   const { error } = await supabase
     .from('budget_categories')
     .update(patch)

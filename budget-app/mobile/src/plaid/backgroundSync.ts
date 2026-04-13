@@ -3,6 +3,8 @@ import { AppState, AppStateStatus } from 'react-native';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { syncTransactions, migrateAccessTokens } from './syncTransactions';
+import { detectIncomeSources } from './incomeDetector';
+import { detectFixedItems } from './fixedItemClassifier';
 import { supabase } from '../supabase/client';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
@@ -31,6 +33,10 @@ export async function syncStaleItems() {
       await syncTransactions(item);
     }
   }
+
+  // Run detectors after sync — order matters: income first, then fixed items
+  await detectIncomeSources().catch(() => {});
+  await detectFixedItems().catch(() => {});
 }
 
 export function setupNotificationHandler() {
