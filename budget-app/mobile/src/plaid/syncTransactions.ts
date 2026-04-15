@@ -50,10 +50,17 @@ interface PlaidAccount {
   balances: { current: number | null; available: number | null };
 }
 
-async function upsertAccounts(accounts: PlaidAccount[], plaidItem: PlaidItem) {
+async function upsertAccounts(
+  accounts: PlaidAccount[],
+  plaidItem: PlaidItem,
+  userId: string,
+) {
   if (!accounts?.length) return;
 
-  const existing = await database.get<Account>('accounts').query().fetch();
+  // Only query this user's accounts — prevents touching another user's rows
+  const existing = await database.get<Account>('accounts')
+    .query(Q.where('user_id', userId))
+    .fetch();
   const existingMap = new Map(existing.map(a => [a.plaidAccountId, a]));
 
   await database.write(async () => {
@@ -66,6 +73,7 @@ async function upsertAccounts(accounts: PlaidAccount[], plaidItem: PlaidItem) {
         });
       } else {
         await database.get<Account>('accounts').create(a => {
+          a.userId = userId;
           a.plaidAccountId = acc.account_id;
           a.plaidItemId = plaidItem.itemId;
           a.name = acc.name;
@@ -80,7 +88,10 @@ async function upsertAccounts(accounts: PlaidAccount[], plaidItem: PlaidItem) {
   });
 }
 
-export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
+export async function syncTransactions(
+  plaidItem: PlaidItem,
+  userId: string,
+): Promise<void> {
   let cursor = plaidItem.cursor ?? '';
   let hasMore = true;
 
@@ -91,18 +102,22 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
 
     if (error) throw new Error(`sync-transactions failed: ${error.message}`);
 
-    // Upsert accounts from every sync response (balances update each call)
-    await upsertAccounts(data.accounts, plaidItem);
+    await upsertAccounts(data.accounts, plaidItem, userId);
 
     await database.write(async () => {
       for (const txn of data.added as PlaidTransaction[]) {
-        // Skip if already exists (idempotent re-sync)
+        // Scope duplicate check to this user — another user's identical
+        // plaid_transaction_id must not block this user's record.
         const existing = await database.get<Transaction>('transactions')
-          .query(Q.where('plaid_transaction_id', txn.transaction_id))
+          .query(
+            Q.where('user_id', userId),
+            Q.where('plaid_transaction_id', txn.transaction_id),
+          )
           .fetch();
         if (existing.length > 0) continue;
 
         await database.get<Transaction>('transactions').create(t => {
+          t.userId = userId;
           t.plaidTransactionId = txn.transaction_id;
           t.accountId = txn.account_id;
           t.amount = txn.amount;
@@ -116,7 +131,10 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
 
       for (const removed of data.removed) {
         const existing = await database.get<Transaction>('transactions')
-          .query(Q.where('plaid_transaction_id', removed.transaction_id))
+          .query(
+            Q.where('user_id', userId),
+            Q.where('plaid_transaction_id', removed.transaction_id),
+          )
           .fetch();
         if (existing.length > 0) await existing[0].destroyPermanently();
       }
@@ -134,8 +152,15 @@ export async function syncTransactions(plaidItem: PlaidItem): Promise<void> {
 }
 
 export async function syncAllItems(): Promise<void> {
-  const items = await database.get<PlaidItem>('plaid_items').query().fetch();
-  await Promise.all(items.map(item => syncTransactions(item)));
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // Only sync this user's plaid_items
+  const items = await database.get<PlaidItem>('plaid_items')
+    .query(Q.where('user_id', user.id))
+    .fetch();
+
+  await Promise.all(items.map(item => syncTransactions(item, user.id)));
 }
 
 /**
@@ -144,7 +169,12 @@ export async function syncAllItems(): Promise<void> {
  * it only writes if it finds non-empty values.
  */
 export async function migrateAccessTokens(): Promise<void> {
-  const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const items = await database.get<PlaidItem>('plaid_items')
+    .query(Q.where('user_id', user.id))
+    .fetch();
   const stale = items.filter(i => i.accessToken && i.accessToken.length > 0);
   if (stale.length === 0) return;
 

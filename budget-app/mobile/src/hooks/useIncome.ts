@@ -29,9 +29,12 @@ export function useIncome(): {
   const [sources, setSources] = useState<IncomeSource[]>([]);
 
   const load = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { data } = await supabase
       .from('income_sources')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at');
     if (data) setSources(data.map(toIncomeSource));
   }, []);

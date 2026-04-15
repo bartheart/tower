@@ -34,9 +34,12 @@ export function useBudgets(transactions: Transaction[]): {
   const [categories, setCategories] = useState<SupabaseBudget[]>([]);
 
   const loadCategories = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { data } = await supabase
       .from('budget_categories')
       .select('*')
+      .eq('user_id', user.id)
       .order('name');
     if (data) setCategories(data);
   }, []);

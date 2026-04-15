@@ -4,6 +4,7 @@ import { field } from '@nozbe/watermelondb/decorators';
 export default class Transaction extends Model {
   static table = 'transactions';
 
+  @field('user_id') userId!: string;
   @field('plaid_transaction_id') plaidTransactionId!: string;
   @field('account_id') accountId!: string;
   @field('amount') amount!: number;

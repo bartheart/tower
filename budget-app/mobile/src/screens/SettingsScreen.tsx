@@ -4,9 +4,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create, open, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
 import { fetchLinkToken } from '../plaid/linkToken';
 import { exchangePublicToken } from '../plaid/exchangeToken';
+import { Q } from '@nozbe/watermelondb';
 import { syncTransactions, syncAllItems } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
+import { supabase } from '../supabase/client';
 import { useAccounts } from '../hooks/useTransactions';
 import { useAuth } from '../auth/AuthContext';
 
@@ -33,9 +35,13 @@ export default function SettingsScreen() {
   const handlePlaidSuccess = useCallback(async (success: LinkSuccess) => {
     console.log('[Plaid] onSuccess fired, institution:', success.metadata.institution?.name);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { itemId } = await exchangePublicToken(success.publicToken);
       await database.write(async () => {
         await database.get<PlaidItem>('plaid_items').create(item => {
+          item.userId = user.id;
           item.itemId = itemId;
           item.accessToken = '';
           item.institutionId = success.metadata.institution?.id ?? '';
@@ -44,8 +50,8 @@ export default function SettingsScreen() {
         });
       });
       const item = (await database.get<PlaidItem>('plaid_items')
-        .query().fetch()).find(i => i.itemId === itemId)!;
-      await syncTransactions(item);
+        .query(Q.where('user_id', user.id)).fetch()).find(i => i.itemId === itemId)!;
+      await syncTransactions(item, user.id);
       Alert.alert('Connected!', `${success.metadata.institution?.name} linked successfully.`);
     } catch (err) {
       Alert.alert('Error', `Failed to connect account: ${err instanceof Error ? err.message : String(err)}`);
