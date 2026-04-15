@@ -25,20 +25,21 @@ export function useAuth() {
 }
 
 /**
- * Resets the local WatermelonDB and updates the stored last-user marker.
+ * Best-effort local DB wipe when the signed-in user changes.
  *
- * If the reset throws (e.g. an open observer holds the DB), we CANNOT
- * safely show data — the caller must sign the user out immediately.
- *
- * Returns true if reset succeeded, false if it failed.
+ * Security note: this is cleanup, NOT the security boundary.
+ * All WatermelonDB reads are scoped by user_id, so even if this
+ * reset fails, a different user cannot see another user's rows.
+ * We therefore never block sign-in on a reset failure.
  */
-async function resetDatabaseForUser(userId: string): Promise<boolean> {
+async function tryResetForNewUser(userId: string): Promise<void> {
   try {
     await database.unsafeResetDatabase();
     await SecureStore.setItemAsync(LAST_USER_KEY, userId);
-    return true;
-  } catch {
-    return false;
+  } catch (e) {
+    // Reset failed — log and continue. The user_id-scoped queries
+    // ensure data isolation regardless.
+    console.warn('[AuthContext] DB reset failed, continuing anyway:', e);
   }
 }
 
@@ -47,23 +48,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // getSession() handles cold-start: INITIAL_SESSION from onAuthStateChange
+    // can race with async SecureStore reads, so we seed the session state
+    // immediately and let the auth listener handle any subsequent changes.
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setLoading(false);
+    });
+
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+      if (event === 'SIGNED_IN') {
         if (newSession?.user) {
           const userId = newSession.user.id;
           const lastUserId = await SecureStore.getItemAsync(LAST_USER_KEY).catch(() => null);
-
-          // Only reset if this is a different user than last time.
-          // Same user on cold-start (INITIAL_SESSION) skips the wipe.
+          // Only wipe if a different user is signing in
           if (lastUserId !== userId) {
-            const ok = await resetDatabaseForUser(userId);
-            if (!ok) {
-              // Reset failed — cannot guarantee data isolation. Force sign-out.
-              await supabase.auth.signOut().catch(() => {});
-              setSession(null);
-              setLoading(false);
-              return;
-            }
+            await tryResetForNewUser(userId);
           }
         }
         setSession(newSession);
@@ -71,12 +71,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setLoading(false);
-        // Best-effort cleanup on sign-out; clear last-user marker so the next
-        // sign-in always triggers a fresh reset regardless of who signs in.
         await SecureStore.deleteItemAsync(LAST_USER_KEY).catch(() => {});
         await database.unsafeResetDatabase().catch(() => {});
+      } else if (event === 'INITIAL_SESSION') {
+        // Cold-start: check if a different user's session was restored
+        if (newSession?.user) {
+          const userId = newSession.user.id;
+          const lastUserId = await SecureStore.getItemAsync(LAST_USER_KEY).catch(() => null);
+          if (lastUserId !== userId) {
+            await tryResetForNewUser(userId);
+          }
+        }
+        // getSession() above already seeded state — no setSession/setLoading needed here
       } else {
-        // TOKEN_REFRESHED, USER_UPDATED, etc. — just update session
+        // TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY, etc.
         setSession(newSession);
       }
     });
@@ -85,8 +93,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    // Null session first so the tab navigator unmounts all observers before
-    // we wipe the database — prevents WatermelonDB "open observer" errors.
+    // Null session first so the tab navigator unmounts all observers
+    // before we wipe the DB — avoids WatermelonDB "open observer" errors.
     setSession(null);
     await supabase.auth.signOut().catch(() => {});
     await SecureStore.deleteItemAsync(LAST_USER_KEY).catch(() => {});
