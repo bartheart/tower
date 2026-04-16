@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -76,6 +76,18 @@ export default function AuthScreen() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  // Check once on mount whether the native Sign-in-with-Apple module is available.
+  // isAvailableAsync() returns false when running in Expo Go or a dev client
+  // that was built before expo-apple-authentication was added — prevents the
+  // RCTManager native-view crash.
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    AppleAuthentication.isAvailableAsync()
+      .then(setAppleAvailable)
+      .catch(() => setAppleAvailable(false));
+  }, []);
 
   const passwordRef = useRef<TextInput>(null);
   const confirmRef  = useRef<TextInput>(null);
@@ -334,8 +346,9 @@ export default function AuthScreen() {
                 <View style={s.dividerLine} />
               </View>
 
-              {/* Apple — native button renders only on iOS where the entitlement is active */}
-              {Platform.OS === 'ios' && (
+              {/* Apple — only render when native module confirms availability.
+                  Prevents RCTManager crash on dev clients built without the module. */}
+              {appleAvailable && (
                 <AppleAuthentication.AppleAuthenticationButton
                   buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                   buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
