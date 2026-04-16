@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
-import { signInWithEmail, signUpWithEmail, supabase } from '../supabase/client';
+import { signInWithEmail, signUpWithEmail, signInWithApple, supabase } from '../supabase/client';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Mode = 'signin' | 'signup';
 type Screen = 'form' | 'confirm_email';
@@ -60,18 +61,6 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
   );
 }
 
-/** Apple logo — single white path on a 24×24 canvas */
-function AppleLogo({ size = 20 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" style={{ marginRight: 10 }}>
-      <Path
-        fill="#f0f0f5"
-        d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
-      />
-    </Svg>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AuthScreen() {
@@ -106,6 +95,22 @@ export default function AuthScreen() {
     setError(null);
     setShowPw(false);
     setShowConfirmPw(false);
+  }
+
+  async function handleAppleSignIn() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithApple();
+      // AuthContext listener takes over from here — no further state change needed
+    } catch (e: any) {
+      // User cancelled — silently ignore
+      if (e?.code === 'ERR_REQUEST_CANCELED') return;
+      setError(e?.message || 'Apple sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleForgotPassword() {
@@ -329,11 +334,16 @@ export default function AuthScreen() {
                 <View style={s.dividerLine} />
               </View>
 
-              {/* Apple */}
-              <TouchableOpacity style={s.socialBtn} activeOpacity={0.8}>
-                <AppleLogo />
-                <Text style={s.socialBtnText}>Login with Apple</Text>
-              </TouchableOpacity>
+              {/* Apple — native button renders only on iOS where the entitlement is active */}
+              {Platform.OS === 'ios' && (
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={10}
+                  style={s.appleBtn}
+                  onPress={handleAppleSignIn}
+                />
+              )}
 
               {/* Google */}
               <TouchableOpacity style={[s.socialBtn, { marginTop: 10 }]} activeOpacity={0.8}>
@@ -475,6 +485,7 @@ const s = StyleSheet.create({
     backgroundColor: '#0f1729',
   },
   socialBtnText: { fontSize: 14, color: '#cbd5e1', fontWeight: '500' },
+  appleBtn: { height: 50, width: '100%' },
 
   // Switch mode
   switchRow: {

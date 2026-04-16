@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -39,4 +40,30 @@ export async function signOut() {
 export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   return session;
+}
+
+/**
+ * Sign in with Apple (iOS only).
+ *
+ * Presents the native Apple credential sheet, then exchanges the identity
+ * token with Supabase. No email confirmation step — Supabase provisions the
+ * session immediately.
+ *
+ * Throws AppleAuthentication.AppleAuthenticationUserCancelledError if the
+ * user taps Cancel (callers should catch and silently ignore that case).
+ */
+export async function signInWithApple(): Promise<void> {
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+  });
+
+  const { error } = await supabase.auth.signInWithIdToken({
+    provider: 'apple',
+    token: credential.identityToken!,
+  });
+
+  if (error) throw error;
 }

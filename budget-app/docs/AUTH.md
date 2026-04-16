@@ -33,15 +33,18 @@ Supabase sends a confirmation email on signup. Until confirmed, sign-in returns 
 
 ---
 
-## Backlog — Social / OAuth Login
+## Social / OAuth Login
 
-These are tracked here for future implementation. None require schema changes — Supabase handles OAuth sessions transparently.
+### Sign in with Apple  ✅ Implemented
+- Package: `expo-apple-authentication` (~8.0.8)
+- `signInWithApple()` in `supabase/client.ts` calls `AppleAuthentication.signInAsync()` then `supabase.auth.signInWithIdToken({ provider: 'apple', token: identityToken })`
+- iOS only — the native `AppleAuthenticationButton` renders on `Platform.OS === 'ios'`
+- User cancels (`ERR_REQUEST_CANCELED`) are silently ignored
+- **Still required before App Store submission:**
+  1. Enable "Sign in with Apple" capability in Xcode (Signing & Capabilities)
+  2. Configure Apple provider in Supabase Dashboard → Authentication → Providers → Apple (Service ID + private key)
 
-### Sign in with Apple  *(highest priority — App Store requirement for apps with social login)*
-- Package: `expo-apple-authentication`
-- Call `AppleAuthentication.signInAsync()` → exchange `identityToken` via `supabase.auth.signInWithIdToken({ provider: 'apple', token })`
-- Requires: Apple Developer "Sign in with Apple" capability, Supabase Apple provider configured with Service ID + key
-- UX: show Apple button below the mode toggle on iOS only (`Platform.OS === 'ios'`)
+## Backlog — Remaining OAuth
 
 ### Sign in with Google
 - Package: `@react-native-google-signin/google-signin` (or `expo-auth-session` with Google)
