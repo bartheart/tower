@@ -39,7 +39,7 @@ serve(async (req) => {
     .from('plaid_tokens')
     .upsert(
       { user_id: user.id, item_id, access_token },
-      { onConflict: 'item_id' }
+      { onConflict: 'user_id,item_id' }
     );
 
   if (upsertError) {

@@ -4,6 +4,7 @@ import { field } from '@nozbe/watermelondb/decorators';
 export default class PlaidItem extends Model {
   static table = 'plaid_items';
 
+  @field('user_id') userId!: string;
   @field('item_id') itemId!: string;
   @field('access_token') accessToken!: string;
   @field('institution_id') institutionId!: string;

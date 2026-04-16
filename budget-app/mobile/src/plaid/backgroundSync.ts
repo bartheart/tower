@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { AppState, AppStateStatus } from 'react-native';
+import { Q } from '@nozbe/watermelondb';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { syncTransactions, migrateAccessTokens } from './syncTransactions';
@@ -23,18 +24,24 @@ export async function registerPushToken(userId: string) {
 }
 
 export async function syncStaleItems() {
-  await migrateAccessTokens(); // blank any legacy SQLite tokens
-  const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await migrateAccessTokens();
+
+  // Only sync this user's items
+  const items = await database.get<PlaidItem>('plaid_items')
+    .query(Q.where('user_id', user.id))
+    .fetch();
   const now = Date.now();
 
   for (const item of items) {
     const lastSync = item.lastSyncedAt ?? 0;
     if (now - lastSync > STALE_THRESHOLD_MS) {
-      await syncTransactions(item);
+      await syncTransactions(item, user.id);
     }
   }
 
-  // Run detectors after sync — order matters: income first, then fixed items
   await detectIncomeSources().catch(() => {});
   await detectFixedItems().catch(() => {});
 }
@@ -49,14 +56,18 @@ export function setupNotificationHandler() {
     }),
   });
 
-  // Sync when notification received in foreground
   return Notifications.addNotificationReceivedListener(async notification => {
     const itemId = notification.request.content.data?.itemId as string | undefined;
     if (!itemId) return;
 
-    const items = await database.get<PlaidItem>('plaid_items').query().fetch();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const items = await database.get<PlaidItem>('plaid_items')
+      .query(Q.where('user_id', user.id))
+      .fetch();
     const item = items.find(i => i.itemId === itemId);
-    if (item) await syncTransactions(item);
+    if (item) await syncTransactions(item, user.id);
   });
 }
 

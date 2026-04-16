@@ -36,9 +36,12 @@ export function useFixedItems(): {
   const [items, setItems] = useState<FixedItem[]>([]);
 
   const load = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { data } = await supabase
       .from('fixed_items')
       .select('*')
+      .eq('user_id', user.id)
       .order('merchant_name');
     if (data) setItems(data.map(toFixedItem));
   }, []);

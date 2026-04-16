@@ -39,7 +39,13 @@ export function useGoals(): { goals: Goal[]; reload: () => void } {
   const [goals, setGoals] = useState<Goal[]>([]);
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('savings_goals').select('*').order('created_at');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('savings_goals')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at');
     if (data) setGoals(data.map(toGoal));
   }, []);
 
