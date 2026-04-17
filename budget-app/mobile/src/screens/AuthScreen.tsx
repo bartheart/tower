@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
-import { signInWithEmail, signUpWithEmail, signInWithApple, supabase } from '../supabase/client';
+import { signInWithEmail, signUpWithEmail, signInWithApple, signInWithGoogle, supabase } from '../supabase/client';
+import { isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Mode = 'signin' | 'signup';
@@ -120,6 +121,21 @@ export default function AuthScreen() {
       // User cancelled — silently ignore
       if (e?.code === 'ERR_REQUEST_CANCELED') return;
       setError(e?.message || 'Apple sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithGoogle();
+      // AuthContext listener takes over — no further state change needed
+    } catch (e: any) {
+      if (isErrorWithCode(e) && e.code === statusCodes.SIGN_IN_CANCELLED) return;
+      setError('Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -359,7 +375,12 @@ export default function AuthScreen() {
               )}
 
               {/* Google */}
-              <TouchableOpacity style={[s.socialBtn, { marginTop: 10 }]} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[s.socialBtn, { marginTop: 10 }]}
+                activeOpacity={0.8}
+                onPress={handleGoogleSignIn}
+                testID="google-signin-button"
+              >
                 <GoogleLogo />
                 <Text style={s.socialBtnText}>Login with Google</Text>
               </TouchableOpacity>
