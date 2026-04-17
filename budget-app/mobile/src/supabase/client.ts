@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -65,5 +66,26 @@ export async function signInWithApple(): Promise<void> {
     token: credential.identityToken!,
   });
 
+  if (error) throw error;
+}
+
+/**
+ * Sign in with Google (iOS and Android).
+ *
+ * Presents the native Google account picker, then exchanges the ID token
+ * with Supabase. AuthContext listener takes over on success.
+ *
+ * Throws an error with code statusCodes.SIGN_IN_CANCELLED if the user
+ * dismisses the picker — callers should catch and silently ignore that case.
+ */
+export async function signInWithGoogle(): Promise<void> {
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const response = await GoogleSignin.signIn();
+  const idToken = response.data?.idToken;
+  if (!idToken) throw new Error('No ID token returned from Google Sign-In');
+  const { error } = await supabase.auth.signInWithIdToken({
+    provider: 'google',
+    token: idToken,
+  });
   if (error) throw error;
 }
