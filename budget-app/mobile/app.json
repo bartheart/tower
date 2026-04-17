@@ -34,7 +34,11 @@
     "scheme": "tower",
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-apple-authentication",
+      ["@react-native-google-signin/google-signin", {
+        "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER"
+      }]
     ],
     "extra": {
       "eas": {
