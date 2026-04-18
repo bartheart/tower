@@ -133,7 +133,7 @@ export default function AuthScreen() {
       await signInWithGoogle();
       // AuthContext listener takes over — no further state change needed
     } catch (e: any) {
-      setError('Google sign-in failed. Please try again.');
+      setError(e?.message ?? 'Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
