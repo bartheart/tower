@@ -232,7 +232,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
     }
 
     const p = previewGoalAllocation(
-      { name: name.trim(), targetAmount: t, currentAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
+      { name: name.trim(), targetAmount: t, startingAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
       budgets,
       confirmedMonthlyIncome
     );
@@ -245,7 +245,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
     setSaving(true);
     try {
       await commitGoalAllocation(
-        { name: name.trim(), targetAmount: parseFloat(target), currentAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
+        { name: name.trim(), targetAmount: parseFloat(target), startingAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
         preview,
         color
       );
@@ -266,7 +266,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
             <TextInput style={m.input} placeholder="e.g. Emergency Fund" placeholderTextColor="#475569" value={name} onChangeText={setName} />
             <Text style={m.label}>TARGET AMOUNT</Text>
             <TextInput style={m.input} placeholder="10000" placeholderTextColor="#475569" keyboardType="numeric" value={target} onChangeText={setTarget} />
-            <Text style={m.label}>SAVED SO FAR</Text>
+            <Text style={m.label}>ALREADY SAVED (STARTING BALANCE)</Text>
             <TextInput style={m.input} placeholder="0" placeholderTextColor="#475569" keyboardType="numeric" value={current} onChangeText={setCurrent} />
             <Text style={m.label}>TARGET DATE (YYYY-MM-DD)</Text>
             <TextInput style={m.input} placeholder="2027-01-01" placeholderTextColor="#475569" value={targetDate} onChangeText={setTargetDate} maxLength={10} />
