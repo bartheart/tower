@@ -92,6 +92,17 @@ export async function signInWithGoogle(): Promise<void> {
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== 'success') return; // user cancelled — silent
 
-  const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
+  // Supabase returns tokens in the URL fragment (implicit flow): tower://#access_token=...&refresh_token=...
+  const fragment = result.url.split('#')[1] ?? '';
+  const params = Object.fromEntries(fragment.split('&').map(p => p.split('=')));
+  const accessToken = params['access_token'];
+  const refreshToken = params['refresh_token'];
+
+  if (!accessToken || !refreshToken) throw new Error('Google sign-in: missing tokens in redirect');
+
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
   if (sessionError) throw sessionError;
 }
