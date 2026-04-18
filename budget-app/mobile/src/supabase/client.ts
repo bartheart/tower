@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import * as WebBrowser from 'expo-web-browser';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -70,22 +70,28 @@ export async function signInWithApple(): Promise<void> {
 }
 
 /**
- * Sign in with Google (iOS and Android).
+ * Sign in with Google via Supabase OAuth web flow.
  *
- * Presents the native Google account picker, then exchanges the ID token
- * with Supabase. AuthContext listener takes over on success.
+ * Opens Google's sign-in page in SFSafariViewController (iOS) or a Custom
+ * Tab (Android). On success Supabase redirects back to tower:// and we
+ * exchange the PKCE code for a session. AuthContext listener takes over.
  *
- * Throws an error with code statusCodes.SIGN_IN_CANCELLED if the user
- * dismisses the picker — callers should catch and silently ignore that case.
+ * Returns silently (no throw) if the user closes the browser without
+ * signing in — callers do not need to handle a cancellation error.
  */
 export async function signInWithGoogle(): Promise<void> {
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  const response = await GoogleSignin.signIn();
-  const idToken = response.data?.idToken;
-  if (!idToken) throw new Error('No ID token returned from Google Sign-In');
-  const { error } = await supabase.auth.signInWithIdToken({
+  const redirectTo = 'tower://';
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    token: idToken,
+    options: { redirectTo, skipBrowserRedirect: true },
   });
   if (error) throw error;
+  if (!data.url) throw new Error('No OAuth URL from Supabase');
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success') return; // user cancelled — silent
+
+  const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
+  if (sessionError) throw sessionError;
 }

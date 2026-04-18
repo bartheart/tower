@@ -14,7 +14,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
 import { signInWithEmail, signUpWithEmail, signInWithApple, signInWithGoogle, supabase } from '../supabase/client';
-import { isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Mode = 'signin' | 'signup';
@@ -134,7 +133,6 @@ export default function AuthScreen() {
       await signInWithGoogle();
       // AuthContext listener takes over — no further state change needed
     } catch (e: any) {
-      if (isErrorWithCode(e) && e.code === statusCodes.SIGN_IN_CANCELLED) return;
       setError('Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
