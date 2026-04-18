@@ -16,7 +16,19 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.manicmonk.budget",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "tower"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -35,10 +47,7 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
-      "expo-apple-authentication",
-      ["@react-native-google-signin/google-signin", {
-        "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER"
-      }]
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {
