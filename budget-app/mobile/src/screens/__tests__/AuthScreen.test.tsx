@@ -20,11 +20,13 @@ jest.mock('react-native-svg', () => {
 
 const mockSignIn = jest.fn();
 const mockSignUp = jest.fn();
+const mockSignInWithGoogle = jest.fn();
 const mockResetPassword = jest.fn();
 
 jest.mock('../../supabase/client', () => ({
   signInWithEmail: (...args: any[]) => mockSignIn(...args),
   signUpWithEmail: (...args: any[]) => mockSignUp(...args),
+  signInWithGoogle: (...args: any[]) => mockSignInWithGoogle(...args),
   supabase: {
     auth: { resetPasswordForEmail: (...args: any[]) => mockResetPassword(...args) },
   },
@@ -105,4 +107,27 @@ test('does not fire a second sign-in while the first is in flight', async () => 
   fireEvent.press(getByTestId('submit-button'));
   await act(async () => { resolve({}); });
   expect(mockSignIn).toHaveBeenCalledTimes(1);
+});
+
+// 11. Google button is visible on sign-in screen
+test('renders Google sign-in button on sign-in screen', () => {
+  const { getByTestId } = render(<AuthScreen />);
+  expect(getByTestId('google-signin-button')).toBeTruthy();
+});
+
+// 12. Pressing Google button calls signInWithGoogle
+test('calls signInWithGoogle when Google button is pressed', async () => {
+  mockSignInWithGoogle.mockResolvedValueOnce(undefined);
+  const { getByTestId } = render(<AuthScreen />);
+  await act(async () => { fireEvent.press(getByTestId('google-signin-button')); });
+  expect(mockSignInWithGoogle).toHaveBeenCalledTimes(1);
+});
+
+// 13. Failed Google sign-in shows error
+test('shows error message when Google sign-in fails', async () => {
+  mockSignInWithGoogle.mockRejectedValueOnce(new Error('Network error'));
+  const { getByTestId, findByTestId } = render(<AuthScreen />);
+  await act(async () => { fireEvent.press(getByTestId('google-signin-button')); });
+  const errorEl = await findByTestId('error-text');
+  expect(errorEl.props.children).toMatch(/network error/i);
 });

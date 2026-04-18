@@ -33,21 +33,31 @@ Supabase sends a confirmation email on signup. Until confirmed, sign-in returns 
 
 ---
 
-## Backlog — Social / OAuth Login
+## Social / OAuth Login
 
-These are tracked here for future implementation. None require schema changes — Supabase handles OAuth sessions transparently.
+### Sign in with Apple  ✅ Implemented
+- Package: `expo-apple-authentication` (~8.0.8)
+- `signInWithApple()` in `supabase/client.ts` calls `AppleAuthentication.signInAsync()` then `supabase.auth.signInWithIdToken({ provider: 'apple', token: identityToken })`
+- iOS only — the native `AppleAuthenticationButton` renders on `Platform.OS === 'ios'`
+- User cancels (`ERR_REQUEST_CANCELED`) are silently ignored
+- **Still required before App Store submission:**
+  1. Enable "Sign in with Apple" capability in Xcode (Signing & Capabilities)
+  2. Configure Apple provider in Supabase Dashboard → Authentication → Providers → Apple (Service ID + private key)
 
-### Sign in with Apple  *(highest priority — App Store requirement for apps with social login)*
-- Package: `expo-apple-authentication`
-- Call `AppleAuthentication.signInAsync()` → exchange `identityToken` via `supabase.auth.signInWithIdToken({ provider: 'apple', token })`
-- Requires: Apple Developer "Sign in with Apple" capability, Supabase Apple provider configured with Service ID + key
-- UX: show Apple button below the mode toggle on iOS only (`Platform.OS === 'ios'`)
+### Sign in with Google  ✅ Implemented
+- Package: `react-native-app-auth` (^8.1.0) + `expo-crypto` (~15.0.8)
+- `signInWithGoogle()` in `supabase/client.ts`:
+  1. Generates a random 16-byte nonce via `expo-crypto`'s `getRandomBytes` (Hermes-safe — no `crypto` global)
+  2. SHA-256 hashes the nonce with `digestStringAsync` → `hashedNonce`
+  3. Calls `authorize()` (react-native-app-auth) with `useNonce: false` and `additionalParameters: { nonce: hashedNonce }` — the hashed nonce goes into Google's JWT nonce claim
+  4. Exchanges the `idToken` with `supabase.auth.signInWithIdToken({ provider: 'google', token: idToken, nonce: rawNonce })` — Supabase re-hashes and verifies
+- AppDelegate conforms to `RNAppAuthAuthorizationFlowManager` (required by react-native-app-auth) — wired via bridging header `<react-native-app-auth/RNAppAuthAuthorizationFlowManager.h>`
+- URL scheme `com.googleusercontent.apps.78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb` registered in `app.json` `CFBundleURLTypes` for the OAuth redirect
+- **Supabase Google provider:** Client ID must be set to the **iOS** client ID (`78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb.apps.googleusercontent.com`)
+- User cancels are silently ignored in `AuthScreen.tsx` (error message check on `e?.message`)
+- iOS only for now; Android requires its own client ID and redirect URL
 
-### Sign in with Google
-- Package: `@react-native-google-signin/google-signin` (or `expo-auth-session` with Google)
-- Call `GoogleSignin.signIn()` → exchange `idToken` via `supabase.auth.signInWithIdToken({ provider: 'google', token })`
-- Requires: Google Cloud OAuth client ID (iOS + Android), Supabase Google provider configured
-- UX: show Google button below Apple button (or below mode toggle on Android)
+## Backlog — Remaining OAuth
 
 ### Future OAuth providers
 - GitHub, Facebook — lower priority, same pattern as Google above

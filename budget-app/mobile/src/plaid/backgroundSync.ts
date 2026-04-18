@@ -7,6 +7,7 @@ import { syncTransactions, migrateAccessTokens } from './syncTransactions';
 import { detectIncomeSources } from './incomeDetector';
 import { detectFixedItems } from './fixedItemClassifier';
 import { supabase } from '../supabase/client';
+import { checkBudgetAlerts } from '../notifications/budgetAlerts';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -44,16 +45,20 @@ export async function syncStaleItems() {
 
   await detectIncomeSources().catch(() => {});
   await detectFixedItems().catch(() => {});
+  await checkBudgetAlerts(user.id).catch(() => {});
 }
 
 export function setupNotificationHandler() {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: false,
-      shouldShowList: false,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) => {
+      const isBudgetAlert = notification.request.content.data?.type === 'budget_alert';
+      return {
+        shouldShowBanner: isBudgetAlert,
+        shouldShowList: isBudgetAlert,
+        shouldPlaySound: isBudgetAlert,
+        shouldSetBadge: false,
+      };
+    },
   });
 
   return Notifications.addNotificationReceivedListener(async notification => {

@@ -17,7 +17,6 @@ import {
   setupAppStateSync,
   syncStaleItems,
 } from './src/plaid/backgroundSync';
-
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 

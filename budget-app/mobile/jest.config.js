@@ -11,5 +11,8 @@ module.exports = {
     // jest-expo sets platform=ios which would otherwise resolve .native.js
     '^@nozbe/watermelondb/adapters/sqlite/makeDispatcher(.*)$':
       '<rootDir>/node_modules/@nozbe/watermelondb/adapters/sqlite/makeDispatcher/index.js',
+    // Mock native Google Sign-In package (no native bindings in Jest)
+    '^@react-native-google-signin/google-signin$':
+      '<rootDir>/__mocks__/@react-native-google-signin/google-signin.js',
   },
 };
