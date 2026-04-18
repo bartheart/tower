@@ -1,8 +1,18 @@
+// Mock transitive imports that require native modules / env vars
+jest.mock('../../supabase/client', () => ({
+  supabase: { auth: { getUser: jest.fn() } },
+}));
+jest.mock('../../db', () => ({
+  database: { get: jest.fn() },
+}));
+jest.mock('../../auth/AuthContext', () => ({
+  useAuth: jest.fn().mockReturnValue({ user: null }),
+}));
+
 import { getWeekRange, currentMonthRange } from '../useTransactions';
 
 describe('getWeekRange', () => {
   it('returns Monday as start for a Wednesday', () => {
-    // Wednesday 2026-04-15
     jest.useFakeTimers().setSystemTime(new Date('2026-04-15T12:00:00Z'));
     const { start, end } = getWeekRange();
     expect(start).toBe('2026-04-13'); // Monday
@@ -11,7 +21,6 @@ describe('getWeekRange', () => {
   });
 
   it('returns Monday as start when today is Sunday', () => {
-    // Sunday 2026-04-19
     jest.useFakeTimers().setSystemTime(new Date('2026-04-19T12:00:00Z'));
     const { start, end } = getWeekRange();
     expect(start).toBe('2026-04-13');

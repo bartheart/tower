@@ -2,6 +2,7 @@ import { syncTransactions } from '../syncTransactions';
 import { database } from '../../db';
 import PlaidItem from '../../db/models/PlaidItem';
 import Transaction from '../../db/models/Transaction';
+import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
   supabase: {
@@ -10,10 +11,12 @@ jest.mock('../../supabase/client', () => ({
         data: { session: { access_token: 'mock-jwt' } },
       }),
     },
+    functions: {
+      invoke: jest.fn(),
+    },
   },
 }));
 
-// Mock the db with in-memory test instance
 jest.mock('../../db', () => {
   const { Database } = require('@nozbe/watermelondb');
   const SQLiteAdapter = require('@nozbe/watermelondb/adapters/sqlite').default;
@@ -28,7 +31,7 @@ jest.mock('../../db', () => {
   return { database: db };
 });
 
-global.fetch = jest.fn();
+const mockInvoke = supabase.functions.invoke as jest.Mock;
 
 const PLAID_SYNC_RESPONSE = {
   added: [
@@ -47,21 +50,21 @@ const PLAID_SYNC_RESPONSE = {
   removed: [],
   next_cursor: 'cursor_v2',
   has_more: false,
+  accounts: [],
 };
 
 describe('syncTransactions', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('fetches transactions from Plaid and writes to WatermelonDB', async () => {
-    (fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => PLAID_SYNC_RESPONSE,
-    });
+  it('fetches transactions from Plaid via edge function and writes to WatermelonDB', async () => {
+    mockInvoke.mockResolvedValueOnce({ data: PLAID_SYNC_RESPONSE, error: null });
 
-    // Seed a PlaidItem (accessToken is blank — token lives in Vault now)
+    const userId = 'user-test-123';
+
     await database.write(async () => {
       await database.get<PlaidItem>('plaid_items').create(item => {
         item.itemId = 'item_1';
+        item.userId = userId;
         item.accessToken = '';
         item.institutionId = 'ins_1';
         item.institutionName = 'Chase';
@@ -70,12 +73,12 @@ describe('syncTransactions', () => {
     });
 
     const item = (await database.get<PlaidItem>('plaid_items').query().fetch())[0];
-    await syncTransactions(item);
+    await syncTransactions(item, userId);
 
-    // Verify it called the Edge Function, not Plaid directly
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('sync-transactions'),
-      expect.objectContaining({ method: 'POST' })
+    // Verify edge function invoked (not fetch directly)
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'sync-transactions',
+      expect.objectContaining({ body: expect.objectContaining({ item_id: 'item_1' }) }),
     );
 
     const txns = await database.get<Transaction>('transactions').query().fetch();
@@ -83,8 +86,8 @@ describe('syncTransactions', () => {
     expect(txns[0].merchantName).toBe('Whole Foods');
     expect(txns[0].categoryL1).toBe('Food and Drink');
     expect(txns[0].categoryL2).toBe('Groceries');
+    expect(txns[0].userId).toBe(userId);
 
-    // Cursor should be updated
     const updatedItem = (await database.get<PlaidItem>('plaid_items').query().fetch())[0];
     expect(updatedItem.cursor).toBe('cursor_v2');
   });
