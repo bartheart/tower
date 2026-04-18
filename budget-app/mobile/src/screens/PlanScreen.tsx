@@ -9,6 +9,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, updateGoalProgress } from '../hooks/useGoals';
+import { loadGoalEvents, GoalEvent } from '../goals/goalEvents';
 import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
 import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSource, deleteIncomeSource } from '../hooks/useIncome';
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
@@ -803,7 +804,145 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   );
 }
 
+// ─── Suggestion Sheet (stub — full implementation in Task 10) ─────────────────
+function SuggestionSheet({
+  visible, onClose, goal, budgets, confirmedMonthlyIncome, onApplied,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  goal: any;
+  budgets: any;
+  confirmedMonthlyIncome: number;
+  onApplied: () => void;
+}) {
+  return null;
+}
+
 // ─── Goals Tab ────────────────────────────────────────────────────────────────
+
+function GoalStatusPill({ status }: { status: string }) {
+  const config = {
+    on_track:  { label: 'On track',  bg: '#14532d', text: '#4ade80' },
+    at_risk:   { label: 'At risk',   bg: '#431407', text: '#fb923c' },
+    completed: { label: 'Completed', bg: '#1e1b4b', text: '#818cf8' },
+  }[status] ?? { label: status, bg: '#1e293b', text: '#94a3b8' };
+  return (
+    <View style={{ backgroundColor: config.bg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start' }}>
+      <Text style={{ color: config.text, fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }}>{config.label.toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function GoalCard({
+  g, budgets, confirmedMonthlyIncome, onDeleted, onReload,
+}: {
+  g: import('../hooks/useGoals').Goal;
+  budgets: ReturnType<typeof useBudgets>['budgets'];
+  confirmedMonthlyIncome: number;
+  onDeleted: () => void;
+  onReload: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [events, setEvents] = useState<GoalEvent[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const loadEvents = async () => {
+    try { setEvents(await loadGoalEvents(g.id, 5)); } catch {}
+  };
+
+  const handleExpand = () => {
+    if (!expanded) loadEvents();
+    setExpanded(e => !e);
+  };
+
+  const handleDelete = () => {
+    Alert.alert(`Delete "${g.name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+          await removeGoalAllocation(g.id, budgets);
+          onDeleted();
+        }
+      },
+    ]);
+  };
+
+  return (
+    <View style={s.goalCard}>
+      <TouchableOpacity onLongPress={handleDelete} activeOpacity={0.9}>
+        <View style={s.goalCardRow}>
+          <Text style={s.goalCardName}>{g.name}</Text>
+          <GoalStatusPill status={g.status} />
+        </View>
+
+        <View style={s.barTrack}>
+          <View style={[s.barFill, {
+            width: `${Math.min(g.progressPercent / 100, 1) * 100}%`,
+            backgroundColor: g.status === 'at_risk' ? '#fb923c' : '#6366f1',
+          }]} />
+        </View>
+
+        <Text style={s.goalSub}>
+          {fmt(g.currentAmount)} of {fmt(g.targetAmount)}
+          {g.monthsLeft !== null ? ` · ~${g.monthsLeft}mo left` : ''}
+        </Text>
+
+        {g.monthlyContributionNeeded !== null && (
+          <Text style={[s.goalSub, { marginTop: 2, color: '#64748b' }]}>
+            Needs {fmt(g.monthlyContributionNeeded)}/mo
+          </Text>
+        )}
+
+        {g.status === 'at_risk' && (
+          <View style={{ marginTop: 8, padding: 10, backgroundColor: '#1c1012', borderRadius: 6, borderLeftWidth: 3, borderLeftColor: '#fb923c' }}>
+            <Text style={{ color: '#fb923c', fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+              This goal may fall behind schedule.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#fb923c', borderRadius: 6, paddingVertical: 6, alignItems: 'center' }}
+                onPress={() => setShowSuggestions(true)}
+              >
+                <Text style={{ color: '#0f0f0f', fontSize: 12, fontWeight: '700' }}>Adjust Budgets</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={handleExpand} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={{ color: '#475569', fontSize: 11 }}>{expanded ? '▲ Hide history' : '▼ Show history'}</Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={{ marginTop: 6 }}>
+          {events.length === 0 ? (
+            <Text style={{ color: '#475569', fontSize: 11 }}>No events yet.</Text>
+          ) : events.map(e => (
+            <View key={e.id} style={{ paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#1e293b' }}>
+              <Text style={{ color: '#94a3b8', fontSize: 11 }}>
+                {e.eventType === 'at_risk' ? `⚠️ Fell at risk — $${e.shortfall?.toFixed(0) ?? '?'} shortfall` :
+                 e.eventType === 'back_on_track' ? '✓ Back on track' :
+                 e.eventType === 'adjustment' ? `Budgets adjusted` :
+                 '✓ Goal reached'}
+                {' · '}
+                {new Date(e.createdAt).toLocaleDateString()}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <SuggestionSheet
+        visible={showSuggestions}
+        onClose={() => setShowSuggestions(false)}
+        goal={g}
+        budgets={budgets}
+        confirmedMonthlyIncome={confirmedMonthlyIncome}
+        onApplied={onReload}
+      />
+    </View>
+  );
+}
 
 function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
   budgets: ReturnType<typeof useBudgets>['budgets'];
@@ -813,60 +952,25 @@ function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
   const { goals, reload: reloadGoals } = useGoals();
   const [showGoalModal, setShowGoalModal] = useState(false);
 
-  const handleUpdateProgress = (id: string, current: number) => {
-    Alert.prompt('Update Progress', 'Current saved amount:',
-      async (value) => {
-        const amount = parseFloat(value);
-        if (!isNaN(amount) && amount >= 0) { await updateGoalProgress(id, amount); reloadGoals(); }
-      },
-      'plain-text', String(current), 'numeric'
-    );
-  };
-
-  const handleDeleteGoal = (id: string, name: string) => {
-    Alert.alert(`Delete "${name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          await removeGoalAllocation(id, budgets);
-          reloadGoals();
-          onReload();
-        }
-      },
-    ]);
-  };
-
   return (
     <View>
       {goals.length === 0 ? (
         <Text style={s.emptyHint}>No goals yet. Add one to see how it affects your budget.</Text>
       ) : (
         goals.map(g => (
-          <TouchableOpacity
+          <GoalCard
             key={g.id}
-            style={s.goalCard}
-            onPress={() => handleUpdateProgress(g.id, g.currentAmount)}
-            onLongPress={() => handleDeleteGoal(g.id, g.name)}
-          >
-            <View style={s.goalCardRow}>
-              <Text style={s.goalCardName}>{g.name}</Text>
-              <Text style={s.goalPct}>{g.progressPercent}%</Text>
-            </View>
-            <View style={s.barTrack}>
-              <View style={[s.barFill, { width: `${Math.min(g.progressPercent / 100, 1) * 100}%`, backgroundColor: '#6366f1' }]} />
-            </View>
-            <Text style={s.goalSub}>
-              {fmt(g.currentAmount)} of {fmt(g.targetAmount)}
-              {g.monthsLeft !== null ? ` · ~${g.monthsLeft}mo left` : ''}
-            </Text>
-          </TouchableOpacity>
+            g={g}
+            budgets={budgets}
+            confirmedMonthlyIncome={confirmedMonthlyIncome}
+            onDeleted={() => { reloadGoals(); onReload(); }}
+            onReload={() => { reloadGoals(); onReload(); }}
+          />
         ))
       )}
-
       <TouchableOpacity style={[s.addRowBtn, { marginTop: 12 }]} onPress={() => setShowGoalModal(true)}>
         <Text style={s.addRowBtnText}>+ Add Goal</Text>
       </TouchableOpacity>
-
       <AddGoalModal
         visible={showGoalModal}
         onClose={() => setShowGoalModal(false)}
