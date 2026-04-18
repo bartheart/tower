@@ -1,21 +1,22 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 
-const EDGE_FN_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
-
 export async function exchangePublicToken(publicToken: string): Promise<{ itemId: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
+  // Refresh session — the Plaid flow can take minutes and the token may have expired
+  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+  if (refreshErr || !refreshed.session) {
+    throw new Error('Session expired — please sign out and sign in again');
+  }
 
-  const response = await fetch(`${EDGE_FN_URL}/exchange-public-token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ public_token: publicToken }),
+  const { data, error } = await supabase.functions.invoke('exchange-public-token', {
+    body: { public_token: publicToken },
   });
-
-  if (!response.ok) throw new Error('Failed to exchange token');
-  const data = await response.json();
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const body = await error.context.text();
+      throw new Error(`exchange-public-token ${error.context.status}: ${body}`);
+    }
+    throw new Error(`exchange-public-token failed: ${error.message}`);
+  }
   return { itemId: data.item_id };
 }

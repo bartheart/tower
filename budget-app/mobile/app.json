@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tower",
-    "slug": "tower",
+    "slug": "budget-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,19 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.manicmonk.budget",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "tower"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -31,9 +43,11 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "tower",
     "plugins": [
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

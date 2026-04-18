@@ -50,6 +50,7 @@ serve(async (req) => {
       removed: plaidData.removed,
       next_cursor: plaidData.next_cursor,
       has_more: plaidData.has_more,
+      accounts: plaidData.accounts ?? [],
     }),
     { headers: { 'Content-Type': 'application/json' } }
   );

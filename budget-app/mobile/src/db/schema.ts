@@ -1,11 +1,12 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'transactions',
       columns: [
+        { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'plaid_transaction_id', type: 'string', isIndexed: true },
         { name: 'account_id', type: 'string', isIndexed: true },
         { name: 'amount', type: 'number' },
@@ -19,6 +20,7 @@ export const schema = appSchema({
     tableSchema({
       name: 'accounts',
       columns: [
+        { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'plaid_account_id', type: 'string', isIndexed: true },
         { name: 'plaid_item_id', type: 'string', isIndexed: true },
         { name: 'name', type: 'string' },
@@ -32,6 +34,7 @@ export const schema = appSchema({
     tableSchema({
       name: 'plaid_items',
       columns: [
+        { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'item_id', type: 'string', isIndexed: true },
         { name: 'access_token', type: 'string' },
         { name: 'institution_id', type: 'string' },

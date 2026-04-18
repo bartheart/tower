@@ -1,20 +1,22 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 
-const EDGE_FN_URL = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
-
 export async function fetchLinkToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
+  // Force-refresh so the access_token sent to Edge Functions is always current.
+  // The auto-refresh timer may not have fired yet if the app was just resumed.
+  const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+  if (refreshErr || !refreshed.session) {
+    throw new Error('Session expired — please sign out and sign in again');
+  }
 
-  const response = await fetch(`${EDGE_FN_URL}/create-link-token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
-
-  if (!response.ok) throw new Error('Failed to create link token');
-  const data = await response.json();
+  const { data, error } = await supabase.functions.invoke('create-link-token');
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const body = await error.context.text();
+      throw new Error(`create-link-token ${error.context.status}: ${body}`);
+    }
+    throw new Error(`create-link-token failed: ${error.message}`);
+  }
+  if (!data?.link_token) throw new Error(`No link_token in response: ${JSON.stringify(data)}`);
   return data.link_token;
 }
