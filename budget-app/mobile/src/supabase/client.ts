@@ -98,6 +98,7 @@ export async function signInWithGoogle(): Promise<void> {
     clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID!,
     redirectUrl: 'com.googleusercontent.apps.78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb:/oauth2redirect/google',
     scopes: ['openid', 'profile', 'email'],
+    useNonce: false,          // disable library's auto-nonce — we manage it ourselves
     additionalParameters: {
       nonce: hashedNonce,
     },
