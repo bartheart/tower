@@ -9,7 +9,9 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, updateGoalProgress } from '../hooks/useGoals';
-import { loadGoalEvents, GoalEvent } from '../goals/goalEvents';
+import { loadGoalEvents, GoalEvent, writeGoalEvent } from '../goals/goalEvents';
+import { computeSuggestions, BudgetCut } from '../goals/suggestionEngine';
+import { supabase } from '../supabase/client';
 import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
 import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSource, deleteIncomeSource } from '../hooks/useIncome';
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
@@ -804,18 +806,153 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   );
 }
 
-// ─── Suggestion Sheet (stub — full implementation in Task 10) ─────────────────
+// ─── Suggestion Sheet ─────────────────────────────────────────────────────────
+
 function SuggestionSheet({
   visible, onClose, goal, budgets, confirmedMonthlyIncome, onApplied,
 }: {
   visible: boolean;
   onClose: () => void;
-  goal: any;
-  budgets: any;
+  goal: import('../hooks/useGoals').Goal;
+  budgets: ReturnType<typeof useBudgets>['budgets'];
   confirmedMonthlyIncome: number;
   onApplied: () => void;
 }) {
-  return null;
+  const [applying, setApplying] = useState(false);
+
+  const suggestionBuckets = budgets.map(b => ({
+    id: b.id,
+    name: b.name,
+    targetPct: b.targetPct ?? 0,
+    monthlyFloor: b.monthlyFloor,
+    monthlyLimit: b.monthlyLimit,
+    priorityRank: b.priorityRank,
+    isGoal: b.isGoal,
+  }));
+
+  const shortfall = goal.monthlyContributionNeeded != null
+    ? Math.max(0, goal.monthlyContributionNeeded - confirmedMonthlyIncome * 0.1)
+    : 0;
+
+  const { cuts, timelineExtensionMonths } = computeSuggestions({
+    shortfall,
+    buckets: suggestionBuckets,
+    confirmedMonthlyIncome,
+    goalMonthlyContribution: goal.monthlyContributionNeeded ?? 0,
+    monthsLeft: goal.monthsLeft ?? 0,
+  });
+
+  const handleAutoApply = async () => {
+    setApplying(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await Promise.all(
+        cuts.map(cut =>
+          supabase
+            .from('budget_categories')
+            .update({ target_pct: Math.round(cut.suggestedPct * 100) / 100 })
+            .eq('id', cut.bucketId)
+        )
+      );
+
+      await writeGoalEvent({
+        userId: user.id,
+        goalId: goal.id,
+        eventType: 'adjustment',
+        trigger: 'manual',
+        shortfall: 0,
+        snapshot: {
+          cuts: cuts.map(c => ({
+            bucket_id: c.bucketId,
+            bucket_name: c.bucketName,
+            old_pct: c.currentPct,
+            new_pct: c.suggestedPct,
+            cut_amount: c.cutAmount,
+            reason: c.reason,
+          })),
+        },
+      });
+
+      onApplied();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleExtendTimeline = async () => {
+    if (!goal.targetDate || timelineExtensionMonths <= 0) return;
+    const d = new Date(goal.targetDate);
+    d.setMonth(d.getMonth() + timelineExtensionMonths);
+    const newDate = d.toISOString().split('T')[0];
+    const { error } = await supabase
+      .from('savings_goals')
+      .update({ target_date: newDate })
+      .eq('id', goal.id);
+    if (!error) { onApplied(); onClose(); }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#0f172a', padding: 24 }}>
+        <View style={{ width: 36, height: 4, backgroundColor: '#334155', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+        <Text style={{ color: '#f1f5f9', fontSize: 17, fontWeight: '700', marginBottom: 4 }}>
+          To stay on track for {goal.name}:
+        </Text>
+
+        {cuts.length === 0 ? (
+          <Text style={{ color: '#64748b', marginTop: 12 }}>
+            Not enough slack in your budgets to cover the shortfall. Consider extending the timeline.
+          </Text>
+        ) : (
+          <>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 12, marginTop: 4 }}>SUGGESTED BUDGET CUTS</Text>
+            {cuts.map(cut => (
+              <View key={cut.bucketId} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: '#f1f5f9', fontSize: 14, fontWeight: '600' }}>{cut.bucketName}</Text>
+                  <Text style={{ color: '#fb923c', fontSize: 14 }}>−{fmt(cut.cutAmount)}</Text>
+                </View>
+                <Text style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{cut.reason}</Text>
+                <Text style={{ color: '#475569', fontSize: 11 }}>
+                  {cut.currentPct.toFixed(1)}% → {cut.suggestedPct.toFixed(1)}% of income
+                </Text>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              style={{ backgroundColor: '#6366f1', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 20 }}
+              onPress={handleAutoApply}
+              disabled={applying}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                {applying ? 'Applying…' : 'Apply These Cuts'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {timelineExtensionMonths > 0 && (
+          <TouchableOpacity
+            style={{ borderWidth: 1, borderColor: '#334155', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 12 }}
+            onPress={handleExtendTimeline}
+          >
+            <Text style={{ color: '#94a3b8', fontWeight: '600', fontSize: 14 }}>
+              Extend timeline by {timelineExtensionMonths} month{timelineExtensionMonths > 1 ? 's' : ''} instead
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity onPress={onClose} style={{ marginTop: 16, alignItems: 'center' }}>
+          <Text style={{ color: '#475569', fontSize: 14 }}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
 }
 
 // ─── Goals Tab ────────────────────────────────────────────────────────────────
