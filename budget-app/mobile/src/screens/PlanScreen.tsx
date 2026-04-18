@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
-import { useGoals, updateGoalProgress } from '../hooks/useGoals';
+import { useGoals, type Goal } from '../hooks/useGoals';
 import { loadGoalEvents, GoalEvent, writeGoalEvent } from '../goals/goalEvents';
 import { computeSuggestions, BudgetCut } from '../goals/suggestionEngine';
 import { supabase } from '../supabase/client';
@@ -813,14 +813,16 @@ function SuggestionSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  goal: import('../hooks/useGoals').Goal;
+  goal: Goal;
   budgets: ReturnType<typeof useBudgets>['budgets'];
   confirmedMonthlyIncome: number;
   onApplied: () => void;
 }) {
   const [applying, setApplying] = useState(false);
 
-  const suggestionBuckets = budgets.map(b => ({
+  const shortfall = goal.monthlyContributionNeeded ?? 0;
+
+  const suggestionBuckets = useMemo(() => budgets.map(b => ({
     id: b.id,
     name: b.name,
     targetPct: b.targetPct ?? 0,
@@ -828,19 +830,15 @@ function SuggestionSheet({
     monthlyLimit: b.monthlyLimit,
     priorityRank: b.priorityRank,
     isGoal: b.isGoal,
-  }));
+  })), [budgets]);
 
-  const shortfall = goal.monthlyContributionNeeded != null
-    ? Math.max(0, goal.monthlyContributionNeeded - confirmedMonthlyIncome * 0.1)
-    : 0;
-
-  const { cuts, timelineExtensionMonths } = computeSuggestions({
+  const { cuts, timelineExtensionMonths } = useMemo(() => computeSuggestions({
     shortfall,
     buckets: suggestionBuckets,
     confirmedMonthlyIncome,
     goalMonthlyContribution: goal.monthlyContributionNeeded ?? 0,
     monthsLeft: goal.monthsLeft ?? 0,
-  });
+  }), [shortfall, suggestionBuckets, confirmedMonthlyIncome, goal.monthlyContributionNeeded, goal.monthsLeft]);
 
   const handleAutoApply = async () => {
     setApplying(true);
@@ -886,14 +884,23 @@ function SuggestionSheet({
 
   const handleExtendTimeline = async () => {
     if (!goal.targetDate || timelineExtensionMonths <= 0) return;
-    const d = new Date(goal.targetDate);
-    d.setMonth(d.getMonth() + timelineExtensionMonths);
-    const newDate = d.toISOString().split('T')[0];
-    const { error } = await supabase
-      .from('savings_goals')
-      .update({ target_date: newDate })
-      .eq('id', goal.id);
-    if (!error) { onApplied(); onClose(); }
+    setApplying(true);
+    try {
+      const d = new Date(goal.targetDate);
+      d.setMonth(d.getMonth() + timelineExtensionMonths);
+      const newDate = d.toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('savings_goals')
+        .update({ target_date: newDate })
+        .eq('id', goal.id);
+      if (error) throw error;
+      onApplied();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to extend timeline');
+    } finally {
+      setApplying(false);
+    }
   };
 
   return (
@@ -973,7 +980,7 @@ function GoalStatusPill({ status }: { status: string }) {
 function GoalCard({
   g, budgets, confirmedMonthlyIncome, onDeleted, onReload,
 }: {
-  g: import('../hooks/useGoals').Goal;
+  g: Goal;
   budgets: ReturnType<typeof useBudgets>['budgets'];
   confirmedMonthlyIncome: number;
   onDeleted: () => void;
@@ -981,10 +988,16 @@ function GoalCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<GoalEvent[]>([]);
+  const [eventsError, setEventsError] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const loadEvents = async () => {
-    try { setEvents(await loadGoalEvents(g.id, 5)); } catch {}
+    try {
+      setEventsError(false);
+      setEvents(await loadGoalEvents(g.id, 5));
+    } catch {
+      setEventsError(true);
+    }
   };
 
   const handleExpand = () => {
@@ -1052,8 +1065,10 @@ function GoalCard({
 
       {expanded && (
         <View style={{ marginTop: 6 }}>
-          {events.length === 0 ? (
+          {events.length === 0 && !eventsError ? (
             <Text style={{ color: '#475569', fontSize: 11 }}>No events yet.</Text>
+          ) : eventsError ? (
+            <Text style={{ color: '#ef4444', fontSize: 11 }}>Could not load history.</Text>
           ) : events.map(e => (
             <View key={e.id} style={{ paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#1e293b' }}>
               <Text style={{ color: '#94a3b8', fontSize: 11 }}>
