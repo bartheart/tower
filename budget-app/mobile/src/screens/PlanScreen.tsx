@@ -2,11 +2,11 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   ScrollView, View, Text, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
-  RefreshControl, useWindowDimensions, ActivityIndicator,
+  RefreshControl, useWindowDimensions, ActivityIndicator, PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useBudgets, createBudget, updateBudget, deleteBudget } from '../hooks/useBudgets';
+import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, updateGoalProgress } from '../hooks/useGoals';
 import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
@@ -49,26 +49,93 @@ function useCategoryOptions(transactions: Transaction[]): string[] {
   }, [transactions]);
 }
 
+// ─── Percent Slider ───────────────────────────────────────────────────────────
+
+const THUMB_R = 12;
+
+function PercentSlider({
+  value, min, max, step = 0.5, onChange,
+}: {
+  value: number; min: number; max: number; step?: number;
+  onChange: (v: number) => void;
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const widthRef = useRef(0);
+  // propsRef is updated every render so PanResponder callbacks always see fresh props
+  const propsRef = useRef({ min, max, step, onChange });
+  propsRef.current = { min, max, step, onChange };
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        const { min: mn, max: mx, step: st, onChange: cb } = propsRef.current;
+        const x = e.nativeEvent.locationX;
+        const w = widthRef.current;
+        if (w <= 0) return;
+        const raw = mn + (Math.max(0, Math.min(w, x)) / w) * (mx - mn);
+        cb(Math.max(mn, Math.min(mx, Math.round(raw / st) * st)));
+      },
+      onPanResponderMove: (e) => {
+        const { min: mn, max: mx, step: st, onChange: cb } = propsRef.current;
+        const x = e.nativeEvent.locationX;
+        const w = widthRef.current;
+        if (w <= 0) return;
+        const raw = mn + (Math.max(0, Math.min(w, x)) / w) * (mx - mn);
+        cb(Math.max(mn, Math.min(mx, Math.round(raw / st) * st)));
+      },
+    })
+  ).current;
+
+  const fraction = max > min ? Math.max(0, Math.min(1, (value - min) / (max - min))) : 0;
+  const thumbX = trackWidth > 0 ? fraction * trackWidth : 0;
+
+  return (
+    <View
+      style={ss.sliderTrack}
+      onLayout={e => {
+        const w = e.nativeEvent.layout.width;
+        widthRef.current = w;
+        setTrackWidth(w);
+      }}
+      {...pan.panHandlers}
+    >
+      <View style={[ss.sliderFill, { width: thumbX }]} />
+      {trackWidth > 0 && (
+        <View style={[ss.sliderThumb, { left: thumbX - THUMB_R }]} />
+      )}
+    </View>
+  );
+}
+
 // ─── Add Budget Modal ─────────────────────────────────────────────────────────
 
-function AddBudgetModal({ visible, onClose, onSaved, transactions }: {
-  visible: boolean; onClose: () => void; onSaved: () => void; transactions: Transaction[];
+function AddBudgetModal({ visible, onClose, onSaved, transactions, confirmedMonthlyIncome }: {
+  visible: boolean; onClose: () => void; onSaved: () => void;
+  transactions: Transaction[]; confirmedMonthlyIncome: number;
 }) {
   const [name, setName] = useState('');
+  const [plaidCategory, setPlaidCategory] = useState('');
   const [limit, setLimit] = useState('');
   const [color, setColor] = useState('#6366f1');
   const [saving, setSaving] = useState(false);
   const categoryOptions = useCategoryOptions(transactions);
 
-  const reset = () => { setName(''); setLimit(''); setColor('#6366f1'); };
+  const reset = () => { setName(''); setPlaidCategory(''); setLimit(''); setColor('#6366f1'); };
+
+  const pctPreview = confirmedMonthlyIncome > 0 && parseFloat(limit) > 0
+    ? ((parseFloat(limit) / confirmedMonthlyIncome) * 100).toFixed(1)
+    : null;
 
   const handleSave = async () => {
     if (!name.trim()) return Alert.alert('Name required', 'Pick a category or type a name.');
     const amount = parseFloat(limit);
-    if (isNaN(amount) || amount <= 0) return Alert.alert('Invalid limit', 'Enter a dollar amount.');
+    if (isNaN(amount) || amount <= 0) return Alert.alert('Invalid amount', 'Enter a dollar amount.');
+    const targetPct = confirmedMonthlyIncome > 0 ? (amount / confirmedMonthlyIncome) * 100 : undefined;
     setSaving(true);
     try {
-      await createBudget(name.trim(), '💰', amount, color);
+      await createBudget(name.trim(), '💰', amount, color, plaidCategory || undefined, targetPct);
       reset(); onSaved(); onClose();
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -80,28 +147,47 @@ function AddBudgetModal({ visible, onClose, onSaved, transactions }: {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={m.wrap}>
         <ScrollView keyboardShouldPersistTaps="handled">
           <View style={m.handle} />
-          <Text style={m.title}>New Budget</Text>
+          <Text style={m.title}>New Bucket</Text>
           {categoryOptions.length > 0 && (
             <>
-              <Text style={m.label}>YOUR CATEGORIES</Text>
-              <Text style={m.hint}>Tap to use — name must match exactly for spend to be tracked</Text>
+              <Text style={m.label}>TRANSACTION CATEGORY</Text>
+              <Text style={m.hint}>Tap to link — transactions in this Plaid category count toward this bucket's spend</Text>
               <View style={m.chipRow}>
                 {categoryOptions.map(c => (
-                  <TouchableOpacity key={c} style={[m.chip, name === c && m.chipSel]} onPress={() => setName(c)}>
-                    <Text style={[m.chipText, name === c && { color: '#f1f5f9' }]}>{c}</Text>
+                  <TouchableOpacity
+                    key={c}
+                    style={[m.chip, plaidCategory === c && m.chipSel]}
+                    onPress={() => {
+                      setPlaidCategory(c);
+                      if (!name) setName(c); // pre-fill name only if empty
+                    }}
+                  >
+                    <Text style={[m.chipText, plaidCategory === c && { color: '#f1f5f9' }]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </>
           )}
-          <Text style={m.label}>NAME</Text>
-          <TextInput style={m.input} placeholder="e.g. Food and Drink" placeholderTextColor="#475569" value={name} onChangeText={setName} />
-          <Text style={m.label}>MONTHLY LIMIT ($)</Text>
-          <TextInput style={m.input} placeholder="500" placeholderTextColor="#475569" keyboardType="numeric" value={limit} onChangeText={setLimit} />
+          <Text style={m.label}>BUCKET NAME</Text>
+          <TextInput style={m.input} placeholder="e.g. Eating Out" placeholderTextColor="#475569" value={name} onChangeText={setName} />
+          <Text style={m.label}>MONTHLY AMOUNT ($)</Text>
+          <View style={{ position: 'relative' }}>
+            <TextInput
+              style={m.input}
+              placeholder="500"
+              placeholderTextColor="#475569"
+              keyboardType="numeric"
+              value={limit}
+              onChangeText={setLimit}
+            />
+            {pctPreview && (
+              <Text style={m.pctHint}>= {pctPreview}% of income</Text>
+            )}
+          </View>
           <Text style={m.label}>COLOR</Text>
           <ColorPicker value={color} onChange={setColor} />
           <TouchableOpacity style={m.saveBtn} onPress={handleSave} disabled={saving}>
-            <Text style={m.saveBtnText}>{saving ? 'Saving…' : 'Add Budget'}</Text>
+            <Text style={m.saveBtnText}>{saving ? 'Saving…' : 'Add Bucket'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={m.cancelBtn} onPress={onClose}>
             <Text style={m.cancelBtnText}>Cancel</Text>
@@ -388,6 +474,7 @@ function IncomeTab({ onReload }: { onReload: () => void }) {
 function BucketDetailSheet({
   visible,
   budget,
+  allBudgets,
   fixedItems,
   confirmedMonthlyIncome,
   onClose,
@@ -397,6 +484,7 @@ function BucketDetailSheet({
 }: {
   visible: boolean;
   budget: BudgetCategory | null;
+  allBudgets: BudgetCategory[];
   fixedItems: FixedItem[];
   confirmedMonthlyIncome: number;
   onClose: () => void;
@@ -404,14 +492,14 @@ function BucketDetailSheet({
   onDeleted: () => void;
   onReloadFixed: () => void;
 }) {
-  const [pctInput, setPctInput] = useState('');
+  const [pctValue, setPctValue] = useState(0);
   const [floorInput, setFloorInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [floorError, setFloorError] = useState('');
 
   useEffect(() => {
     if (budget) {
-      setPctInput(budget.targetPct != null ? String(budget.targetPct) : '');
+      setPctValue(budget.targetPct ?? 0);
       setFloorInput(String(budget.monthlyFloor));
       setFloorError('');
     }
@@ -422,12 +510,24 @@ function BucketDetailSheet({
     .reduce((s, fi) => s + fi.effectiveAmount, 0);
 
   const allocationAmt = budget && confirmedMonthlyIncome > 0
-    ? confirmedMonthlyIncome * (budget.targetPct ?? 0) / 100
+    ? confirmedMonthlyIncome * pctValue / 100
     : (budget?.monthlyLimit ?? 0);
+
+  // Slider range: floor % as minimum, max = current + slack available from others
+  const floorPct = budget && confirmedMonthlyIncome > 0
+    ? (confirmedFloorMin / confirmedMonthlyIncome) * 100
+    : 0;
+  const othersSlack = allBudgets
+    .filter(c => c.id !== budget?.id && !c.isGoal && (c.targetPct ?? 0) > 0)
+    .reduce((s, c) => {
+      const fp = confirmedMonthlyIncome > 0 ? (c.monthlyFloor / confirmedMonthlyIncome) * 100 : 0;
+      return s + Math.max(0, (c.targetPct ?? 0) - Math.max(fp, 1));
+    }, 0);
+  const sliderMax = Math.min(100, (budget?.targetPct ?? 0) + othersSlack);
+  const sliderMin = Math.max(0, floorPct);
 
   const handleSave = async () => {
     if (!budget) return;
-    const pctVal = parseFloat(pctInput);
     const floorVal = parseFloat(floorInput) || 0;
 
     if (floorVal < confirmedFloorMin - 0.01) {
@@ -437,10 +537,15 @@ function BucketDetailSheet({
     setFloorError('');
     setSaving(true);
     try {
-      await updateBudget(budget.id, {
-        targetPct: isNaN(pctVal) || pctVal <= 0 ? 0 : pctVal,
-        monthlyFloor: floorVal,
-      });
+      const pctChanged = Math.abs(pctValue - (budget.targetPct ?? 0)) > 0.01;
+      if (pctChanged && allBudgets.length > 1) {
+        await rebalanceBucketPct(budget.id, pctValue, allBudgets, confirmedMonthlyIncome);
+      } else {
+        await updateBudget(budget.id, { targetPct: pctValue });
+      }
+      if (floorVal !== budget.monthlyFloor) {
+        await updateBudget(budget.id, { monthlyFloor: floorVal });
+      }
       onSaved();
       onClose();
     } catch (e: any) {
@@ -515,24 +620,20 @@ function BucketDetailSheet({
             </View>
           </View>
 
-          {/* Pct editor */}
-          <Text style={s.detailLabel}>ALLOCATION %</Text>
-          <View style={s.detailInputRow}>
-            <TextInput
-              style={s.detailInput}
-              value={pctInput}
-              onChangeText={setPctInput}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor="#334155"
-            />
-            <Text style={s.detailInputSuffix}>%</Text>
-            {confirmedMonthlyIncome > 0 && (
-              <Text style={s.detailInputHint}>
-                = {fmt(confirmedMonthlyIncome * (parseFloat(pctInput) || 0) / 100)}/mo
-              </Text>
-            )}
+          {/* Pct editor — slider */}
+          <View style={s.detailLabelRow}>
+            <Text style={s.detailLabel}>ALLOCATION</Text>
+            <Text style={s.detailPctBadge}>
+              {pctValue.toFixed(1)}%
+              {confirmedMonthlyIncome > 0 && `  ·  ${fmt(confirmedMonthlyIncome * pctValue / 100)}/mo`}
+            </Text>
           </View>
+          <PercentSlider
+            value={pctValue}
+            min={sliderMin}
+            max={Math.max(sliderMin + 1, sliderMax)}
+            onChange={setPctValue}
+          />
 
           {/* Floor editor */}
           <Text style={s.detailLabel}>MONTHLY FLOOR</Text>
@@ -682,6 +783,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
       <BucketDetailSheet
         visible={detailBudget != null}
         budget={detailBudget}
+        allBudgets={budgets}
         fixedItems={detailBudget ? (fixedByCategory.get(detailBudget.id) ?? []) : []}
         confirmedMonthlyIncome={confirmedMonthlyIncome}
         onClose={() => setDetailBudget(null)}
@@ -695,6 +797,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         onClose={() => setShowBudgetModal(false)}
         onSaved={onReload}
         transactions={transactions}
+        confirmedMonthlyIncome={confirmedMonthlyIncome}
       />
     </View>
   );
@@ -920,6 +1023,8 @@ const s = StyleSheet.create({
   detailInputHint: { fontSize: 12, color: '#475569' },
   detailFloorHint: { fontSize: 11, color: '#475569', marginBottom: 4 },
   detailFloorError: { fontSize: 11, color: '#ef4444', marginBottom: 8 },
+  detailLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  detailPctBadge: { fontSize: 14, color: '#a5b4fc', fontWeight: '700', fontVariant: ['tabular-nums'] as const },
   detailDeleteBtn: { borderWidth: 1, borderColor: '#7f1d1d', borderRadius: 8, padding: 14, alignItems: 'center', marginTop: 8 },
   detailDeleteText: { color: '#ef4444', fontWeight: '600', fontSize: 14 },
   detailCancelBtn: { padding: 14, alignItems: 'center', marginTop: 4 },
@@ -1014,4 +1119,37 @@ const m = StyleSheet.create({
   saveBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   cancelBtn: { padding: 14, alignItems: 'center' },
   cancelBtnText: { color: '#475569', fontSize: 14 },
+  pctHint: { fontSize: 11, color: '#6366f1', marginTop: 6, fontWeight: '500' },
+});
+
+const ss = StyleSheet.create({
+  sliderTrack: {
+    height: 36,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    marginBottom: 20,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  sliderFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#6366f1',
+    borderRadius: 8,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: THUMB_R * 2,
+    height: THUMB_R * 2,
+    borderRadius: THUMB_R,
+    backgroundColor: '#f1f5f9',
+    top: 6, // (36 - 24) / 2
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
 });
