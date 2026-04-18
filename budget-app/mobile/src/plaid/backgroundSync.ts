@@ -8,6 +8,7 @@ import { detectIncomeSources } from './incomeDetector';
 import { detectFixedItems } from './fixedItemClassifier';
 import { supabase } from '../supabase/client';
 import { checkBudgetAlerts } from '../notifications/budgetAlerts';
+import { checkGoalFeasibility } from '../goals/checkGoalFeasibility';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -46,6 +47,7 @@ export async function syncStaleItems() {
   await detectIncomeSources().catch(() => {});
   await detectFixedItems().catch(() => {});
   await checkBudgetAlerts(user.id).catch(() => {});
+  await checkGoalFeasibility(user.id).catch(() => {});
 }
 
 export function setupNotificationHandler() {
