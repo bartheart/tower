@@ -1,7 +1,6 @@
 import Expo
 import React
 import ReactAppDependencyProvider
-import RNAppAuth
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate, RNAppAuthAuthorizationFlowManager {
