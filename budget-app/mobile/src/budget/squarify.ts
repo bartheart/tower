@@ -72,7 +72,10 @@ function layout(items: ScaledItem[], rect: Rect, result: TileRect[]): void {
     return;
   }
 
-  const sideLen = Math.min(rect.w, rect.h);
+  // Use the long side: for a horizontal strip sideLen=rect.w, vertical sideLen=rect.h.
+  // The aspect ratio formula is max(area*L²/rowSum², rowSum²/(area*L²)) where L is the
+  // dimension tiles span — which is always the long side of the remaining rect.
+  const sideLen = Math.max(rect.w, rect.h);
 
   // Build row greedily: keep adding items while worst ratio improves
   let row = [items[0]];
