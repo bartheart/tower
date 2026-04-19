@@ -768,7 +768,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   const bucketYOffsets = useRef<Record<string, number>>({});
   const tabYOffset = useRef<number>(0);
 
-  const handleTilePress = (id: string | null) => {
+  const handleTilePress = useCallback((id: string | null) => {
     setSelectedTreemapId(id);
     if (id && bucketYOffsets.current[id] != null) {
       scrollRef.current?.scrollTo({
@@ -776,7 +776,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         animated: true,
       });
     }
-  };
+  }, [scrollRef]);
 
   const fixedByCategory = useMemo(() => {
     const map = new Map<string, typeof fixedItems>();
