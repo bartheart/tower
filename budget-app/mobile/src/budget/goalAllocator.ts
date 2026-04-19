@@ -22,7 +22,7 @@ export interface AllocationPreview {
 export interface GoalInput {
   name: string;
   targetAmount: number;
-  currentAmount: number;
+  startingAmount: number;
   targetDate: string; // ISO date string
 }
 
@@ -55,7 +55,7 @@ export function previewGoalAllocation(
   }
 
   const months = monthsUntil(goal.targetDate);
-  const monthlyContribution = (goal.targetAmount - goal.currentAmount) / months;
+  const monthlyContribution = (goal.targetAmount - goal.startingAmount) / months;
   const goalTargetPct = (monthlyContribution / confirmedMonthlyIncome) * 100;
 
   // Only non-goal buckets can be cut
@@ -154,7 +154,7 @@ export async function commitGoalAllocation(
       name: goal.name,
       emoji: '🎯',
       target_amount: goal.targetAmount,
-      current_amount: goal.currentAmount,
+      current_amount: goal.startingAmount,
       target_date: goal.targetDate,
       monthly_contribution: preview.monthlyContribution,
     })

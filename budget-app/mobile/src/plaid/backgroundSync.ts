@@ -8,6 +8,7 @@ import { detectIncomeSources } from './incomeDetector';
 import { detectFixedItems } from './fixedItemClassifier';
 import { supabase } from '../supabase/client';
 import { checkBudgetAlerts } from '../notifications/budgetAlerts';
+import { checkGoalFeasibility } from '../goals/checkGoalFeasibility';
 
 const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -46,16 +47,18 @@ export async function syncStaleItems() {
   await detectIncomeSources().catch(() => {});
   await detectFixedItems().catch(() => {});
   await checkBudgetAlerts(user.id).catch(() => {});
+  await checkGoalFeasibility(user.id).catch(() => {});
 }
 
 export function setupNotificationHandler() {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
-      const isBudgetAlert = notification.request.content.data?.type === 'budget_alert';
+      const type = notification.request.content.data?.type;
+      const show = type === 'budget_alert' || type === 'goal_at_risk';
       return {
-        shouldShowBanner: isBudgetAlert,
-        shouldShowList: isBudgetAlert,
-        shouldPlaySound: isBudgetAlert,
+        shouldShowBanner: show,
+        shouldShowList: show,
+        shouldPlaySound: show,
         shouldSetBadge: false,
       };
     },

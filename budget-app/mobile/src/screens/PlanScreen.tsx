@@ -8,7 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
-import { useGoals, updateGoalProgress } from '../hooks/useGoals';
+import { useGoals, type Goal } from '../hooks/useGoals';
+import { loadGoalEvents, GoalEvent, writeGoalEvent } from '../goals/goalEvents';
+import { computeSuggestions, BudgetCut } from '../goals/suggestionEngine';
+import { supabase } from '../supabase/client';
 import { useCurrentPeriodTransactions } from '../hooks/useTransactions';
 import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSource, deleteIncomeSource } from '../hooks/useIncome';
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
@@ -232,7 +235,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
     }
 
     const p = previewGoalAllocation(
-      { name: name.trim(), targetAmount: t, currentAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
+      { name: name.trim(), targetAmount: t, startingAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
       budgets,
       confirmedMonthlyIncome
     );
@@ -245,7 +248,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
     setSaving(true);
     try {
       await commitGoalAllocation(
-        { name: name.trim(), targetAmount: parseFloat(target), currentAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
+        { name: name.trim(), targetAmount: parseFloat(target), startingAmount: parseFloat(current) || 0, targetDate: targetDate.trim() },
         preview,
         color
       );
@@ -266,7 +269,7 @@ function AddGoalModal({ visible, onClose, onSaved, budgets, confirmedMonthlyInco
             <TextInput style={m.input} placeholder="e.g. Emergency Fund" placeholderTextColor="#475569" value={name} onChangeText={setName} />
             <Text style={m.label}>TARGET AMOUNT</Text>
             <TextInput style={m.input} placeholder="10000" placeholderTextColor="#475569" keyboardType="numeric" value={target} onChangeText={setTarget} />
-            <Text style={m.label}>SAVED SO FAR</Text>
+            <Text style={m.label}>ALREADY SAVED (STARTING BALANCE)</Text>
             <TextInput style={m.input} placeholder="0" placeholderTextColor="#475569" keyboardType="numeric" value={current} onChangeText={setCurrent} />
             <Text style={m.label}>TARGET DATE (YYYY-MM-DD)</Text>
             <TextInput style={m.input} placeholder="2027-01-01" placeholderTextColor="#475569" value={targetDate} onChangeText={setTargetDate} maxLength={10} />
@@ -803,7 +806,295 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   );
 }
 
+// ─── Suggestion Sheet ─────────────────────────────────────────────────────────
+
+function SuggestionSheet({
+  visible, onClose, goal, budgets, confirmedMonthlyIncome, onApplied,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  goal: Goal;
+  budgets: ReturnType<typeof useBudgets>['budgets'];
+  confirmedMonthlyIncome: number;
+  onApplied: () => void;
+}) {
+  const [applying, setApplying] = useState(false);
+
+  const shortfall = goal.monthlyContributionNeeded ?? 0;
+
+  const suggestionBuckets = useMemo(() => budgets.map(b => ({
+    id: b.id,
+    name: b.name,
+    targetPct: b.targetPct ?? 0,
+    monthlyFloor: b.monthlyFloor,
+    monthlyLimit: b.monthlyLimit,
+    priorityRank: b.priorityRank,
+    isGoal: b.isGoal,
+  })), [budgets]);
+
+  const { cuts, timelineExtensionMonths } = useMemo(() => computeSuggestions({
+    shortfall,
+    buckets: suggestionBuckets,
+    confirmedMonthlyIncome,
+    goalMonthlyContribution: goal.monthlyContributionNeeded ?? 0,
+    monthsLeft: goal.monthsLeft ?? 0,
+  }), [shortfall, suggestionBuckets, confirmedMonthlyIncome, goal.monthlyContributionNeeded, goal.monthsLeft]);
+
+  const handleAutoApply = async () => {
+    setApplying(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await Promise.all(
+        cuts.map(cut =>
+          supabase
+            .from('budget_categories')
+            .update({ target_pct: Math.round(cut.suggestedPct * 100) / 100 })
+            .eq('id', cut.bucketId)
+        )
+      );
+
+      await writeGoalEvent({
+        userId: user.id,
+        goalId: goal.id,
+        eventType: 'adjustment',
+        trigger: 'manual',
+        shortfall: 0,
+        snapshot: {
+          cuts: cuts.map(c => ({
+            bucket_id: c.bucketId,
+            bucket_name: c.bucketName,
+            old_pct: c.currentPct,
+            new_pct: c.suggestedPct,
+            cut_amount: c.cutAmount,
+            reason: c.reason,
+          })),
+        },
+      });
+
+      onApplied();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleExtendTimeline = async () => {
+    if (!goal.targetDate || timelineExtensionMonths <= 0) return;
+    setApplying(true);
+    try {
+      const d = new Date(goal.targetDate);
+      d.setMonth(d.getMonth() + timelineExtensionMonths);
+      const newDate = d.toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('savings_goals')
+        .update({ target_date: newDate })
+        .eq('id', goal.id);
+      if (error) throw error;
+      onApplied();
+      onClose();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to extend timeline');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#0f172a', padding: 24 }}>
+        <View style={{ width: 36, height: 4, backgroundColor: '#334155', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+        <Text style={{ color: '#f1f5f9', fontSize: 17, fontWeight: '700', marginBottom: 4 }}>
+          To stay on track for {goal.name}:
+        </Text>
+
+        {cuts.length === 0 ? (
+          <Text style={{ color: '#64748b', marginTop: 12 }}>
+            Not enough slack in your budgets to cover the shortfall. Consider extending the timeline.
+          </Text>
+        ) : (
+          <>
+            <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 12, marginTop: 4 }}>SUGGESTED BUDGET CUTS</Text>
+            {cuts.map(cut => (
+              <View key={cut.bucketId} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: '#f1f5f9', fontSize: 14, fontWeight: '600' }}>{cut.bucketName}</Text>
+                  <Text style={{ color: '#fb923c', fontSize: 14 }}>−{fmt(cut.cutAmount)}</Text>
+                </View>
+                <Text style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>{cut.reason}</Text>
+                <Text style={{ color: '#475569', fontSize: 11 }}>
+                  {cut.currentPct.toFixed(1)}% → {cut.suggestedPct.toFixed(1)}% of income
+                </Text>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              style={{ backgroundColor: '#6366f1', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 20 }}
+              onPress={handleAutoApply}
+              disabled={applying}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                {applying ? 'Applying…' : 'Apply These Cuts'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {timelineExtensionMonths > 0 && (
+          <TouchableOpacity
+            style={{ borderWidth: 1, borderColor: '#334155', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 12 }}
+            onPress={handleExtendTimeline}
+          >
+            <Text style={{ color: '#94a3b8', fontWeight: '600', fontSize: 14 }}>
+              Extend timeline by {timelineExtensionMonths} month{timelineExtensionMonths > 1 ? 's' : ''} instead
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity onPress={onClose} style={{ marginTop: 16, alignItems: 'center' }}>
+          <Text style={{ color: '#475569', fontSize: 14 }}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Goals Tab ────────────────────────────────────────────────────────────────
+
+function GoalStatusPill({ status }: { status: string }) {
+  const config = {
+    on_track:  { label: 'On track',  bg: '#14532d', text: '#4ade80' },
+    at_risk:   { label: 'At risk',   bg: '#431407', text: '#fb923c' },
+    completed: { label: 'Completed', bg: '#1e1b4b', text: '#818cf8' },
+  }[status] ?? { label: status, bg: '#1e293b', text: '#94a3b8' };
+  return (
+    <View style={{ backgroundColor: config.bg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start' }}>
+      <Text style={{ color: config.text, fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }}>{config.label.toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function GoalCard({
+  g, budgets, confirmedMonthlyIncome, onDeleted, onReload,
+}: {
+  g: Goal;
+  budgets: ReturnType<typeof useBudgets>['budgets'];
+  confirmedMonthlyIncome: number;
+  onDeleted: () => void;
+  onReload: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [events, setEvents] = useState<GoalEvent[]>([]);
+  const [eventsError, setEventsError] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const loadEvents = async () => {
+    try {
+      setEventsError(false);
+      setEvents(await loadGoalEvents(g.id, 5));
+    } catch {
+      setEventsError(true);
+    }
+  };
+
+  const handleExpand = () => {
+    if (!expanded) loadEvents();
+    setExpanded(e => !e);
+  };
+
+  const handleDelete = () => {
+    Alert.alert(`Delete "${g.name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+          await removeGoalAllocation(g.id, budgets);
+          onDeleted();
+        }
+      },
+    ]);
+  };
+
+  return (
+    <View style={s.goalCard}>
+      <TouchableOpacity onLongPress={handleDelete} activeOpacity={0.9}>
+        <View style={s.goalCardRow}>
+          <Text style={s.goalCardName}>{g.name}</Text>
+          <GoalStatusPill status={g.status} />
+        </View>
+
+        <View style={s.barTrack}>
+          <View style={[s.barFill, {
+            width: `${Math.min(g.progressPercent / 100, 1) * 100}%`,
+            backgroundColor: g.status === 'at_risk' ? '#fb923c' : '#6366f1',
+          }]} />
+        </View>
+
+        <Text style={s.goalSub}>
+          {fmt(g.currentAmount)} of {fmt(g.targetAmount)}
+          {g.monthsLeft !== null ? ` · ~${g.monthsLeft}mo left` : ''}
+        </Text>
+
+        {g.monthlyContributionNeeded !== null && (
+          <Text style={[s.goalSub, { marginTop: 2, color: '#64748b' }]}>
+            Needs {fmt(g.monthlyContributionNeeded)}/mo
+          </Text>
+        )}
+
+        {g.status === 'at_risk' && (
+          <View style={{ marginTop: 8, padding: 10, backgroundColor: '#1c1012', borderRadius: 6, borderLeftWidth: 3, borderLeftColor: '#fb923c' }}>
+            <Text style={{ color: '#fb923c', fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+              This goal may fall behind schedule.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#fb923c', borderRadius: 6, paddingVertical: 6, alignItems: 'center' }}
+                onPress={() => setShowSuggestions(true)}
+              >
+                <Text style={{ color: '#0f0f0f', fontSize: 12, fontWeight: '700' }}>Adjust Budgets</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={handleExpand} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={{ color: '#475569', fontSize: 11 }}>{expanded ? '▲ Hide history' : '▼ Show history'}</Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={{ marginTop: 6 }}>
+          {events.length === 0 && !eventsError ? (
+            <Text style={{ color: '#475569', fontSize: 11 }}>No events yet.</Text>
+          ) : eventsError ? (
+            <Text style={{ color: '#ef4444', fontSize: 11 }}>Could not load history.</Text>
+          ) : events.map(e => (
+            <View key={e.id} style={{ paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#1e293b' }}>
+              <Text style={{ color: '#94a3b8', fontSize: 11 }}>
+                {e.eventType === 'at_risk' ? `⚠️ Fell at risk — $${e.shortfall?.toFixed(0) ?? '?'} shortfall` :
+                 e.eventType === 'back_on_track' ? '✓ Back on track' :
+                 e.eventType === 'adjustment' ? `Budgets adjusted` :
+                 '✓ Goal reached'}
+                {' · '}
+                {new Date(e.createdAt).toLocaleDateString()}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <SuggestionSheet
+        visible={showSuggestions}
+        onClose={() => setShowSuggestions(false)}
+        goal={g}
+        budgets={budgets}
+        confirmedMonthlyIncome={confirmedMonthlyIncome}
+        onApplied={onReload}
+      />
+    </View>
+  );
+}
 
 function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
   budgets: ReturnType<typeof useBudgets>['budgets'];
@@ -813,60 +1104,25 @@ function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
   const { goals, reload: reloadGoals } = useGoals();
   const [showGoalModal, setShowGoalModal] = useState(false);
 
-  const handleUpdateProgress = (id: string, current: number) => {
-    Alert.prompt('Update Progress', 'Current saved amount:',
-      async (value) => {
-        const amount = parseFloat(value);
-        if (!isNaN(amount) && amount >= 0) { await updateGoalProgress(id, amount); reloadGoals(); }
-      },
-      'plain-text', String(current), 'numeric'
-    );
-  };
-
-  const handleDeleteGoal = (id: string, name: string) => {
-    Alert.alert(`Delete "${name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          await removeGoalAllocation(id, budgets);
-          reloadGoals();
-          onReload();
-        }
-      },
-    ]);
-  };
-
   return (
     <View>
       {goals.length === 0 ? (
         <Text style={s.emptyHint}>No goals yet. Add one to see how it affects your budget.</Text>
       ) : (
         goals.map(g => (
-          <TouchableOpacity
+          <GoalCard
             key={g.id}
-            style={s.goalCard}
-            onPress={() => handleUpdateProgress(g.id, g.currentAmount)}
-            onLongPress={() => handleDeleteGoal(g.id, g.name)}
-          >
-            <View style={s.goalCardRow}>
-              <Text style={s.goalCardName}>{g.name}</Text>
-              <Text style={s.goalPct}>{g.progressPercent}%</Text>
-            </View>
-            <View style={s.barTrack}>
-              <View style={[s.barFill, { width: `${Math.min(g.progressPercent / 100, 1) * 100}%`, backgroundColor: '#6366f1' }]} />
-            </View>
-            <Text style={s.goalSub}>
-              {fmt(g.currentAmount)} of {fmt(g.targetAmount)}
-              {g.monthsLeft !== null ? ` · ~${g.monthsLeft}mo left` : ''}
-            </Text>
-          </TouchableOpacity>
+            g={g}
+            budgets={budgets}
+            confirmedMonthlyIncome={confirmedMonthlyIncome}
+            onDeleted={() => { reloadGoals(); onReload(); }}
+            onReload={() => { reloadGoals(); onReload(); }}
+          />
         ))
       )}
-
       <TouchableOpacity style={[s.addRowBtn, { marginTop: 12 }]} onPress={() => setShowGoalModal(true)}>
         <Text style={s.addRowBtnText}>+ Add Goal</Text>
       </TouchableOpacity>
-
       <AddGoalModal
         visible={showGoalModal}
         onClose={() => setShowGoalModal(false)}

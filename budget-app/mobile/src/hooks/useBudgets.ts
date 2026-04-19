@@ -12,6 +12,7 @@ export interface BudgetCategory {
   targetPct: number | null;  // % of income; null = not set / excluded from wellness score
   isGoal: boolean;
   goalId: string | null;
+  priorityRank: number | null;
   plaidCategory: string | null; // Plaid categoryL1/L2 label for spend matching; null = use name
   spent: number;
 }
@@ -26,6 +27,7 @@ interface SupabaseBudget {
   target_pct: number | null;
   is_goal: boolean;
   goal_id: string | null;
+  priority_rank: number | null;
   plaid_category: string | null;
 }
 
@@ -72,6 +74,7 @@ export function useBudgets(transactions: Transaction[]): {
       targetPct: cat.target_pct ?? null,
       isGoal: cat.is_goal ?? false,
       goalId: cat.goal_id ?? null,
+      priorityRank: cat.priority_rank ?? null,
       plaidCategory: cat.plaid_category ?? null,
       // If a Plaid category key is set, use it for spend matching; otherwise fall back to name.
       spent: spendMap.get(cat.plaid_category ?? cat.name) ?? 0,
