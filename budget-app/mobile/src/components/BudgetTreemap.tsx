@@ -46,37 +46,16 @@ export function BudgetTreemap({
     .filter(b => (b.targetPct ?? 0) > 0)
     .map(b => ({ id: b.id, value: b.targetPct! }));
 
-  // No bucket has any allocation set — show placeholder instead of a 100% unallocated tile
-  if (allocatedItems.length === 0) {
-    return (
-      <View
-        testID="budget-treemap"
-        style={[styles.container, { height }]}
-      >
-        <View testID="treemap-placeholder" style={styles.placeholder}>
-          <Text style={styles.placeholderText}>No allocations yet</Text>
-        </View>
-      </View>
-    );
-  }
-
   const squarifyItems = [...allocatedItems];
   if (unallocated > 0) {
     squarifyItems.push({ id: UNALLOCATED_ID, value: unallocated });
   }
 
-  // Don't render tiles until we know the real width
-  if (containerWidth === 0) {
-    return (
-      <View
-        testID="budget-treemap"
-        style={[styles.container, { height }]}
-        onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
-      />
-    );
-  }
-
-  const rects = computeLayout(squarifyItems, containerWidth, height);
+  // Always mounted with onLayout so containerWidth is set on first paint regardless
+  // of whether buckets are loaded yet. Tiles render once containerWidth > 0.
+  const rects = containerWidth > 0
+    ? computeLayout(squarifyItems, containerWidth, height)
+    : [];
 
   // Build a quick lookup: id → bucket color
   const colorMap = new Map(buckets.map(b => [b.id, b.color]));
@@ -87,6 +66,11 @@ export function BudgetTreemap({
       style={[styles.container, { height }]}
       onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
     >
+      {allocatedItems.length === 0 && (
+        <View testID="treemap-placeholder" style={styles.placeholder}>
+          <Text style={styles.placeholderText}>No allocations yet</Text>
+        </View>
+      )}
       {rects.map(rect => {
         const isUnalloc = rect.id === UNALLOCATED_ID;
         const isSelected = rect.id === selectedId;
