@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useBudgets, createBudget, updateBudget, deleteBudget, rebalanceBucketPct } from '../hooks/useBudgets';
+import { useBudgets, createBudget, updateBudget, deleteBudget, deleteBudgetWithRedistribution, rebalanceBucketPct } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, type Goal } from '../hooks/useGoals';
 import { loadGoalEvents, GoalEvent, writeGoalEvent } from '../goals/goalEvents';
@@ -64,29 +64,34 @@ function PercentSlider({
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
   const widthRef = useRef(0);
+  const trackPageXRef = useRef(0);
+  const trackRef = useRef<View>(null);
   // propsRef is updated every render so PanResponder callbacks always see fresh props
   const propsRef = useRef({ min, max, step, onChange });
   propsRef.current = { min, max, step, onChange };
+
+  const computeValue = (absoluteX: number) => {
+    const { min: mn, max: mx, step: st, onChange: cb } = propsRef.current;
+    const w = widthRef.current;
+    if (w <= 0) return;
+    const x = absoluteX - trackPageXRef.current;
+    const raw = mn + (Math.max(0, Math.min(w, x)) / w) * (mx - mn);
+    cb(Math.max(mn, Math.min(mx, Math.round(raw / st) * st)));
+  };
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => {
-        const { min: mn, max: mx, step: st, onChange: cb } = propsRef.current;
-        const x = e.nativeEvent.locationX;
-        const w = widthRef.current;
-        if (w <= 0) return;
-        const raw = mn + (Math.max(0, Math.min(w, x)) / w) * (mx - mn);
-        cb(Math.max(mn, Math.min(mx, Math.round(raw / st) * st)));
+      onPanResponderGrant: (_, gestureState) => {
+        // Re-measure on each grant to handle scroll offsets
+        trackRef.current?.measure((_x, _y, _w, _h, pageX) => {
+          trackPageXRef.current = pageX;
+          computeValue(gestureState.x0);
+        });
       },
-      onPanResponderMove: (e) => {
-        const { min: mn, max: mx, step: st, onChange: cb } = propsRef.current;
-        const x = e.nativeEvent.locationX;
-        const w = widthRef.current;
-        if (w <= 0) return;
-        const raw = mn + (Math.max(0, Math.min(w, x)) / w) * (mx - mn);
-        cb(Math.max(mn, Math.min(mx, Math.round(raw / st) * st)));
+      onPanResponderMove: (_, gestureState) => {
+        computeValue(gestureState.moveX);
       },
     })
   ).current;
@@ -96,11 +101,16 @@ function PercentSlider({
 
   return (
     <View
+      ref={trackRef}
       style={ss.sliderTrack}
       onLayout={e => {
         const w = e.nativeEvent.layout.width;
         widthRef.current = w;
         setTrackWidth(w);
+        // Cache pageX on layout too, so first tap is accurate even before a grant
+        trackRef.current?.measure((_x, _y, _w, _h, pageX) => {
+          trackPageXRef.current = pageX;
+        });
       }}
       {...pan.panHandlers}
     >
@@ -526,7 +536,9 @@ function BucketDetailSheet({
       const fp = confirmedMonthlyIncome > 0 ? (c.monthlyFloor / confirmedMonthlyIncome) * 100 : 0;
       return s + Math.max(0, (c.targetPct ?? 0) - Math.max(fp, 1));
     }, 0);
-  const sliderMax = Math.min(100, (budget?.targetPct ?? 0) + othersSlack);
+  const allocatedTotal = allBudgets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
+  const unallocated = Math.max(0, 100 - allocatedTotal);
+  const sliderMax = Math.min(100, (budget?.targetPct ?? 0) + othersSlack + unallocated);
   const sliderMin = Math.max(0, floorPct);
 
   const handleSave = async () => {
@@ -565,7 +577,7 @@ function BucketDetailSheet({
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await deleteBudget(budget.id);
+          await deleteBudgetWithRedistribution(budget.id, allBudgets);
           onDeleted();
           onClose();
         },
