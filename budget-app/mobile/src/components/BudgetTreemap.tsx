@@ -16,8 +16,8 @@ interface BudgetTreemapProps {
   height?: number;
 }
 
-/** Convert #rrggbb to rgba(r,g,b,alpha) string. Falls back to a neutral color. */
-function hexToRgba(hex: string, alpha: number): string {
+/** Convert a 6-digit hex color (#rrggbb) to rgba(r,g,b,alpha). Only supports 6-digit hex. */
+export function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return `rgba(100,100,100,${alpha})`;
   const r = parseInt(clean.slice(0, 2), 16);
@@ -26,8 +26,9 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// Sentinel id for the unallocated-budget tile. Never exposed to callers — onTilePress
+// receives null when this tile is tapped. Supabase UUIDs never collide with this value.
 const UNALLOCATED_ID = '__unallocated__';
-const CONTAINER_W = 390; // layout computed at a fixed logical width; tiles use % of measured width
 
 export function BudgetTreemap({
   buckets,
@@ -35,7 +36,7 @@ export function BudgetTreemap({
   onTilePress,
   height = 175,
 }: BudgetTreemapProps) {
-  const [containerWidth, setContainerWidth] = useState(CONTAINER_W);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const totalAllocated = buckets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
   const unallocated = Math.max(0, 100 - totalAllocated);
@@ -62,6 +63,17 @@ export function BudgetTreemap({
   const squarifyItems = [...allocatedItems];
   if (unallocated > 0) {
     squarifyItems.push({ id: UNALLOCATED_ID, value: unallocated });
+  }
+
+  // Don't render tiles until we know the real width
+  if (containerWidth === 0) {
+    return (
+      <View
+        testID="budget-treemap"
+        style={[styles.container, { height }]}
+        onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
+      />
+    );
   }
 
   const rects = computeLayout(squarifyItems, containerWidth, height);
@@ -91,12 +103,12 @@ export function BudgetTreemap({
           ? unallocated
           : bucket?.targetPct ?? 0;
 
-        const pressHandler = () => onTilePress(isUnalloc ? null : rect.id);
         return (
           <TouchableOpacity
             key={rect.id}
+            testID="treemap-tile"
             activeOpacity={0.75}
-            onPress={pressHandler}
+            onPress={() => onTilePress(isUnalloc ? null : rect.id)}
             style={[
               styles.tile,
               {
@@ -110,12 +122,6 @@ export function BudgetTreemap({
               isSelected && styles.selectedTile,
             ]}
           >
-            <View
-              testID="treemap-tile"
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onPress={pressHandler as any}
-              style={StyleSheet.absoluteFillObject}
-            />
             {showName && !isUnalloc && (
               <Text style={styles.tileName} numberOfLines={1}>
                 {bucket?.name ?? ''}
