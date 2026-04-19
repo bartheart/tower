@@ -236,21 +236,23 @@ export async function removeGoalAllocation(
 
   const redistributed = computeRedistribution(candidates, freedPct);
 
-  const deleteCategory = supabase
+  const { error: catDeleteError } = await supabase
     .from('budget_categories')
     .delete()
     .eq('goal_id', goalId);
+  if (catDeleteError) throw catDeleteError;
 
-  const deleteGoal = supabase
+  const { error: goalDeleteError } = await supabase
     .from('savings_goals')
     .delete()
     .eq('id', goalId);
+  if (goalDeleteError) throw goalDeleteError;
 
-  await Promise.all([
-    deleteCategory,
-    deleteGoal,
-    ...redistributed.map(r =>
-      supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
-    ),
-  ]);
+  if (redistributed.length > 0) {
+    await Promise.all(
+      redistributed.map(r =>
+        supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
+      )
+    );
+  }
 }
