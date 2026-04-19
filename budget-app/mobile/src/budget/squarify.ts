@@ -53,17 +53,18 @@ function placeRow(items: ScaledItem[], rect: Rect, result: TileRect[]): void {
 }
 
 /** Remaining rect after removing a placed row. */
-function remainingRect(row: ScaledItem[], rect: Rect): Rect {
-  const rowSum = row.reduce((s, i) => s + i.area, 0);
+function remainingRect(rowArea: number, rect: Rect): Rect {
   if (rect.w >= rect.h) {
-    const stripH = rect.w > 0 ? rowSum / rect.w : 0;
+    const stripH = rect.w > 0 ? rowArea / rect.w : 0;
     return { x: rect.x, y: rect.y + stripH, w: rect.w, h: rect.h - stripH };
   } else {
-    const stripW = rect.h > 0 ? rowSum / rect.h : 0;
+    const stripW = rect.h > 0 ? rowArea / rect.h : 0;
     return { x: rect.x + stripW, y: rect.y, w: rect.w - stripW, h: rect.h };
   }
 }
 
+// layout is called recursively once per squarify row group.
+// Depth is bounded by input length; safe for budget use cases (< ~50 items).
 function layout(items: ScaledItem[], rect: Rect, result: TileRect[]): void {
   if (items.length === 0) return;
   if (items.length === 1) {
@@ -87,14 +88,17 @@ function layout(items: ScaledItem[], rect: Rect, result: TileRect[]): void {
     }
   }
 
+  const rowArea = row.reduce((s, i) => s + i.area, 0);
   placeRow(row, rect, result);
-  layout(items.slice(row.length), remainingRect(row, rect), result);
+  layout(items.slice(row.length), remainingRect(rowArea, rect), result);
 }
 
 /**
  * Compute squarified treemap layout.
  * Items are sorted descending by value internally; the returned rects preserve
  * each item's id so callers don't need to worry about sort order.
+ * Precondition: all input values must be non-negative. Negative or zero values
+ * are silently filtered out and produce no tile.
  */
 export function computeLayout(
   items: SquarifyInput[],
@@ -103,11 +107,13 @@ export function computeLayout(
 ): TileRect[] {
   if (items.length === 0 || containerW <= 0 || containerH <= 0) return [];
 
-  const totalValue = items.reduce((s, i) => s + i.value, 0);
-  if (totalValue === 0) return [];
+  // Filter out non-positive values — negative or zero values produce no tile.
+  const positiveItems = items.filter(i => i.value > 0);
+  if (positiveItems.length === 0) return [];
 
+  const totalValue = positiveItems.reduce((s, i) => s + i.value, 0);
   const containerArea = containerW * containerH;
-  const scaled: ScaledItem[] = items
+  const scaled: ScaledItem[] = positiveItems
     .map(item => ({ id: item.id, area: (item.value / totalValue) * containerArea }))
     .sort((a, b) => b.area - a.area);
 
