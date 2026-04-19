@@ -601,6 +601,28 @@ function BucketDetailSheet({
     onReloadFixed();
   };
 
+  const handleRemoveConfirmedFixed = (fi: FixedItem) => {
+    Alert.alert(
+      'Remove fixed charge?',
+      `${fi.merchantName} will no longer count toward this bucket's floor.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: async () => {
+            await dismissFixedItem(fi.id);
+            await recomputeFloor(fi.categoryId);
+            onReloadFixed();
+            const newFloor = fixedItems
+              .filter(x => x.id !== fi.id && x.isConfirmed && !x.needsReview)
+              .reduce((s, x) => s + x.effectiveAmount, 0);
+            setFloorInput(String(Math.round(newFloor)));
+          },
+        },
+      ]
+    );
+  };
+
   if (!budget) return null;
 
   return (
@@ -686,8 +708,13 @@ function BucketDetailSheet({
                   </Text>
                 </View>
                 {fi.isConfirmed && !fi.needsReview ? (
-                  <View style={s.confirmedChip}>
-                    <Text style={s.confirmedChipText}>Fixed</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={s.confirmedChip}>
+                      <Text style={s.confirmedChipText}>Fixed</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveConfirmedFixed(fi)}>
+                      <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '600' }}>✕</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={s.fixedItemActions}>
