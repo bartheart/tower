@@ -128,6 +128,7 @@ describe('deleteBudgetWithRedistribution', () => {
     const upd = ops.find(o => o.op === 'update');
     expect(del?.val).toBe('del');
     expect(upd).toBeDefined();
-    expect((upd?.patch as { target_pct: number }).target_pct).toBeGreaterThan(30);
+    // 'keep' is the only ranked candidate, so it receives all 10% freed from 'del': 30 + 10 = 40
+    expect((upd?.patch as { target_pct: number }).target_pct).toBeCloseTo(40, 1);
   });
 });

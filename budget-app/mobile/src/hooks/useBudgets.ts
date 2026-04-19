@@ -218,10 +218,18 @@ export async function deleteBudgetWithRedistribution(
 
   const redistributed = computeRedistribution(candidates, freedPct);
 
-  await Promise.all([
-    supabase.from('budget_categories').delete().eq('id', id),
-    ...redistributed.map(r =>
-      supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
-    ),
-  ]);
+  // Delete first — redistribution only fires if delete succeeds
+  const { error: deleteError } = await supabase
+    .from('budget_categories')
+    .delete()
+    .eq('id', id);
+  if (deleteError) throw deleteError;
+
+  if (redistributed.length > 0) {
+    await Promise.all(
+      redistributed.map(r =>
+        supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
+      ),
+    );
+  }
 }
