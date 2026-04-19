@@ -62,3 +62,22 @@ test('clamps ceilingScore at 1 when spent > monthlyLimit', () => {
   expect(a.newPct).toBeCloseTo(20 + 10 * (1 / 1.8), 1);
   expect(b.newPct).toBeCloseTo(15 + 10 * (0.8 / 1.8), 1);
 });
+
+test('returns empty when freedPct is negative', () => {
+  const result = computeRedistribution([
+    { id: 'a', targetPct: 20, monthlyLimit: 500, spent: 400, priorityRank: 1 },
+  ], -5);
+  expect(result).toEqual([]);
+});
+
+test('excludes candidate with monthlyLimit = 0 (ceilingScore = 0)', () => {
+  // a has monthlyLimit=0 → ceilingScore=0 → weight=0 → excluded
+  // b has normal limit → gets all of freedPct
+  const result = computeRedistribution([
+    { id: 'a', targetPct: 20, monthlyLimit: 0, spent: 0, priorityRank: 1 },
+    { id: 'b', targetPct: 15, monthlyLimit: 500, spent: 400, priorityRank: 1 },
+  ], 10);
+  expect(result.find(r => r.id === 'a')).toBeUndefined();
+  const b = result.find(r => r.id === 'b')!;
+  expect(b.newPct).toBeCloseTo(25, 1);
+});

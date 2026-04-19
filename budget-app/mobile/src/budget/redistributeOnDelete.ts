@@ -30,7 +30,7 @@ export function computeRedistribution(
 
   const withWeights = candidates.map(c => {
     const priorityScore = c.priorityRank != null ? 1 / c.priorityRank : 0;
-    const ceilingScore = c.monthlyLimit > 0 ? Math.min(1, c.spent / c.monthlyLimit) : 0;
+    const ceilingScore = c.monthlyLimit > 0 ? Math.max(0, Math.min(1, c.spent / c.monthlyLimit)) : 0;
     return { c, weight: priorityScore * ceilingScore };
   });
 
