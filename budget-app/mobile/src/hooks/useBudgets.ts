@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from '../supabase/client';
 import Transaction from '../db/models/Transaction';
+import { computeRedistribution } from '../budget/redistributeOnDelete';
 
 export interface BudgetCategory {
   id: string;
@@ -12,6 +13,7 @@ export interface BudgetCategory {
   targetPct: number | null;  // % of income; null = not set / excluded from wellness score
   isGoal: boolean;
   goalId: string | null;
+  priorityRank: number | null;
   plaidCategory: string | null; // Plaid categoryL1/L2 label for spend matching; null = use name
   spent: number;
 }
@@ -26,6 +28,7 @@ interface SupabaseBudget {
   target_pct: number | null;
   is_goal: boolean;
   goal_id: string | null;
+  priority_rank: number | null;
   plaid_category: string | null;
 }
 
@@ -72,6 +75,7 @@ export function useBudgets(transactions: Transaction[]): {
       targetPct: cat.target_pct ?? null,
       isGoal: cat.is_goal ?? false,
       goalId: cat.goal_id ?? null,
+      priorityRank: cat.priority_rank ?? null,
       plaidCategory: cat.plaid_category ?? null,
       // If a Plaid category key is set, use it for spend matching; otherwise fall back to name.
       spent: spendMap.get(cat.plaid_category ?? cat.name) ?? 0,
@@ -124,11 +128,10 @@ export async function deleteBudget(id: string): Promise<void> {
 }
 
 /**
- * Change a bucket's targetPct and rebalance all other non-goal buckets so
- * the total stays at 100%.
+ * Change a bucket's targetPct.
  *
- * Increasing: cuts from others proportionally, respecting each bucket's floor.
- * Decreasing: distributes freed % to others proportionally.
+ * Increasing: consumes unallocated budget first; only cuts from others if delta > unallocated.
+ * Decreasing: only updates the target bucket — freed % stays unallocated.
  */
 export async function rebalanceBucketPct(
   id: string,
@@ -143,55 +146,90 @@ export async function rebalanceBucketPct(
   const delta = newPct - oldPct;
   if (Math.abs(delta) < 0.01) return;
 
-  const others = allCategories.filter(c => c.id !== id && !c.isGoal && (c.targetPct ?? 0) > 0);
   const updates: Array<{ id: string; newPct: number }> = [
     { id, newPct: Math.round(newPct * 100) / 100 },
   ];
 
   if (delta > 0) {
-    // Increasing — cut proportionally from others, respecting floor
-    const slacks = others.map(c => {
-      const floorPct = monthlyIncome > 0 ? (c.monthlyFloor / monthlyIncome) * 100 : 0;
-      const minPct = Math.max(floorPct, 1);
-      return { cat: c, slack: Math.max(0, (c.targetPct ?? 0) - minPct) };
-    });
+    // Consume unallocated budget first, then cut from others only if needed
+    const totalAllocated = allCategories.reduce((s, c) => s + (c.targetPct ?? 0), 0);
+    const unallocated = Math.max(0, 100 - totalAllocated);
+    const fromOthers = Math.max(0, delta - unallocated);
 
-    let remaining = delta;
-    const cutMap = new Map(slacks.map(x => [x.cat.id, 0]));
-    let uncapped = slacks.filter(x => x.slack > 0);
+    if (fromOthers > 0.001) {
+      const others = allCategories.filter(c => c.id !== id && !c.isGoal && (c.targetPct ?? 0) > 0);
+      const slacks = others.map(c => {
+        const floorPct = monthlyIncome > 0 ? (c.monthlyFloor / monthlyIncome) * 100 : 0;
+        const minPct = Math.max(floorPct, 1);
+        return { cat: c, slack: Math.max(0, (c.targetPct ?? 0) - minPct) };
+      });
 
-    while (remaining > 0.001 && uncapped.length > 0) {
-      const totalWeight = uncapped.reduce((s, x) => s + (1 / (x.cat.targetPct ?? 1)), 0);
-      for (const entry of uncapped) {
-        const weight = (1 / (entry.cat.targetPct ?? 1)) / totalWeight;
-        const alreadyCut = cutMap.get(entry.cat.id) ?? 0;
-        const actual = Math.min(weight * remaining, entry.slack - alreadyCut);
-        cutMap.set(entry.cat.id, alreadyCut + actual);
+      let remaining = fromOthers;
+      const cutMap = new Map(slacks.map(x => [x.cat.id, 0]));
+      let uncapped = slacks.filter(x => x.slack > 0);
+
+      while (remaining > 0.001 && uncapped.length > 0) {
+        const totalWeight = uncapped.reduce((s, x) => s + (1 / (x.cat.targetPct ?? 1)), 0);
+        for (const entry of uncapped) {
+          const weight = (1 / (entry.cat.targetPct ?? 1)) / totalWeight;
+          const alreadyCut = cutMap.get(entry.cat.id) ?? 0;
+          const actual = Math.min(weight * remaining, entry.slack - alreadyCut);
+          cutMap.set(entry.cat.id, alreadyCut + actual);
+        }
+        const distributed = [...cutMap.values()].reduce((s, v) => s + v, 0);
+        remaining = fromOthers - distributed;
+        uncapped = uncapped.filter(x => (cutMap.get(x.cat.id) ?? 0) < x.slack - 0.001);
       }
-      const distributed = [...cutMap.values()].reduce((s, v) => s + v, 0);
-      remaining = delta - distributed;
-      uncapped = uncapped.filter(x => (cutMap.get(x.cat.id) ?? 0) < x.slack - 0.001);
-    }
 
-    for (const [otherId, cut] of cutMap) {
-      if (Math.abs(cut) > 0.001) {
-        const cat = others.find(c => c.id === otherId)!;
-        updates.push({ id: otherId, newPct: Math.round(((cat.targetPct ?? 0) - cut) * 100) / 100 });
+      for (const [otherId, cut] of cutMap) {
+        if (Math.abs(cut) > 0.001) {
+          const cat = allCategories.find(c => c.id === otherId)!;
+          updates.push({ id: otherId, newPct: Math.round(((cat.targetPct ?? 0) - cut) * 100) / 100 });
+        }
       }
     }
-  } else {
-    // Decreasing — redistribute freed % proportionally
-    const freed = Math.abs(delta);
-    const totalOther = others.reduce((s, c) => s + (c.targetPct ?? 0), 0);
-    for (const c of others) {
-      const share = totalOther > 0 ? (c.targetPct ?? 0) / totalOther : 1 / others.length;
-      updates.push({ id: c.id, newPct: Math.round(((c.targetPct ?? 0) + freed * share) * 100) / 100 });
-    }
+    // If delta <= unallocated: only target bucket updated, no cuts needed
   }
+  // Decreasing: only update target bucket — freed % stays unallocated
 
   await Promise.all(
     updates.map(u =>
       supabase.from('budget_categories').update({ target_pct: u.newPct }).eq('id', u.id),
     ),
   );
+}
+
+export async function deleteBudgetWithRedistribution(
+  id: string,
+  allCategories: BudgetCategory[],
+): Promise<void> {
+  const target = allCategories.find(c => c.id === id);
+  const freedPct = target?.targetPct ?? 0;
+
+  const candidates = allCategories
+    .filter(c => c.id !== id && !c.isGoal && (c.targetPct ?? 0) > 0)
+    .map(c => ({
+      id: c.id,
+      targetPct: c.targetPct ?? 0,
+      monthlyLimit: c.monthlyLimit,
+      spent: c.spent,
+      priorityRank: c.priorityRank,
+    }));
+
+  const redistributed = computeRedistribution(candidates, freedPct);
+
+  // Delete first — redistribution only fires if delete succeeds
+  const { error: deleteError } = await supabase
+    .from('budget_categories')
+    .delete()
+    .eq('id', id);
+  if (deleteError) throw deleteError;
+
+  if (redistributed.length > 0) {
+    await Promise.all(
+      redistributed.map(r =>
+        supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
+      ),
+    );
+  }
 }

@@ -10,6 +10,7 @@
 
 import { supabase } from '../supabase/client';
 import { BudgetCategory } from '../hooks/useBudgets';
+import { computeRedistribution } from './redistributeOnDelete';
 
 export interface AllocationPreview {
   goalTargetPct: number;
@@ -22,7 +23,7 @@ export interface AllocationPreview {
 export interface GoalInput {
   name: string;
   targetAmount: number;
-  currentAmount: number;
+  startingAmount: number;
   targetDate: string; // ISO date string
 }
 
@@ -55,8 +56,18 @@ export function previewGoalAllocation(
   }
 
   const months = monthsUntil(goal.targetDate);
-  const monthlyContribution = (goal.targetAmount - goal.currentAmount) / months;
+  const monthlyContribution = (goal.targetAmount - goal.startingAmount) / months;
   const goalTargetPct = (monthlyContribution / confirmedMonthlyIncome) * 100;
+
+  // How much of goalTargetPct can be covered by unallocated income?
+  const totalAllocated = categories.reduce((s, c) => s + (c.targetPct ?? 0), 0);
+  const unallocated = Math.max(0, 100 - totalAllocated);
+  const needFromOthers = Math.max(0, goalTargetPct - unallocated);
+
+  // If nothing needs to come from others, no cuts required
+  if (needFromOthers <= 0.001) {
+    return { goalTargetPct, monthlyContribution, cuts: [], feasible: true, shortfallPct: 0 };
+  }
 
   // Only non-goal buckets can be cut
   const eligible = categories.filter(c => !c.isGoal && (c.targetPct ?? 0) > 0);
@@ -71,19 +82,19 @@ export function previewGoalAllocation(
 
   const totalSlack = slacks.reduce((s, x) => s + x.slack, 0);
 
-  if (totalSlack < goalTargetPct) {
+  if (totalSlack < needFromOthers) {
     return {
       goalTargetPct,
       monthlyContribution,
       cuts: [],
       feasible: false,
-      shortfallPct: goalTargetPct - totalSlack,
+      shortfallPct: needFromOthers - totalSlack,
     };
   }
 
   // Distribute cut inversely weighted by targetPct (lower priority = bigger cut)
   // Iterate to handle floor caps
-  let remaining = goalTargetPct;
+  let remaining = needFromOthers;
   const cutMap = new Map<string, number>(slacks.map(x => [x.cat.id, 0]));
   let uncapped = slacks.filter(x => x.slack > 0);
 
@@ -100,7 +111,7 @@ export function previewGoalAllocation(
     }
 
     const distributed = [...cutMap.values()].reduce((s, v) => s + v, 0);
-    remaining = goalTargetPct - distributed;
+    remaining = needFromOthers - distributed;
 
     // Remove fully-capped buckets from next round
     uncapped = uncapped.filter(x => {
@@ -154,7 +165,7 @@ export async function commitGoalAllocation(
       name: goal.name,
       emoji: '🎯',
       target_amount: goal.targetAmount,
-      current_amount: goal.currentAmount,
+      current_amount: goal.startingAmount,
       target_date: goal.targetDate,
       monthly_contribution: preview.monthlyContribution,
     })
@@ -208,34 +219,40 @@ export async function removeGoalAllocation(
   goalId: string,
   categories: BudgetCategory[]
 ): Promise<void> {
-  // Find the goal's budget category
   const goalCat = categories.find(c => c.goalId === goalId);
   if (!goalCat) return;
 
   const freedPct = goalCat.targetPct ?? 0;
 
-  // Redistribute to non-goal buckets proportionally
-  const eligible = categories.filter(c => !c.isGoal && (c.targetPct ?? 0) > 0);
-  const totalEligiblePct = eligible.reduce((s, c) => s + (c.targetPct ?? 0), 0);
+  const candidates = categories
+    .filter(c => !c.isGoal && (c.targetPct ?? 0) > 0)
+    .map(c => ({
+      id: c.id,
+      targetPct: c.targetPct ?? 0,
+      monthlyLimit: c.monthlyLimit,
+      spent: c.spent,
+      priorityRank: c.priorityRank,
+    }));
 
-  const updates = eligible.map(c => {
-    const share = totalEligiblePct > 0 ? (c.targetPct ?? 0) / totalEligiblePct : 1 / eligible.length;
-    const newPct = Math.round(((c.targetPct ?? 0) + freedPct * share) * 100) / 100;
-    return supabase
-      .from('budget_categories')
-      .update({ target_pct: newPct })
-      .eq('id', c.id);
-  });
+  const redistributed = computeRedistribution(candidates, freedPct);
 
-  const deleteCategory = supabase
+  const { error: catDeleteError } = await supabase
     .from('budget_categories')
     .delete()
     .eq('goal_id', goalId);
+  if (catDeleteError) throw catDeleteError;
 
-  const deleteGoal = supabase
+  const { error: goalDeleteError } = await supabase
     .from('savings_goals')
     .delete()
     .eq('id', goalId);
+  if (goalDeleteError) throw goalDeleteError;
 
-  await Promise.all([...updates, deleteCategory, deleteGoal]);
+  if (redistributed.length > 0) {
+    await Promise.all(
+      redistributed.map(r =>
+        supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
+      )
+    );
+  }
 }
