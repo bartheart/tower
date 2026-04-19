@@ -610,13 +610,17 @@ function BucketDetailSheet({
         {
           text: 'Remove', style: 'destructive',
           onPress: async () => {
-            await dismissFixedItem(fi.id);
-            await recomputeFloor(fi.categoryId);
-            onReloadFixed();
-            const newFloor = fixedItems
-              .filter(x => x.id !== fi.id && x.isConfirmed && !x.needsReview)
-              .reduce((s, x) => s + x.effectiveAmount, 0);
-            setFloorInput(String(Math.round(newFloor)));
+            try {
+              await dismissFixedItem(fi.id);
+              await recomputeFloor(fi.categoryId);
+              onReloadFixed();
+              const newFloor = fixedItems
+                .filter(x => x.id !== fi.id && x.isConfirmed && !x.needsReview)
+                .reduce((s, x) => s + x.effectiveAmount, 0);
+              setFloorInput(String(Math.round(newFloor)));
+            } catch (e: any) {
+              Alert.alert('Error removing charge', e.message);
+            }
           },
         },
       ]
@@ -712,7 +716,7 @@ function BucketDetailSheet({
                     <View style={s.confirmedChip}>
                       <Text style={s.confirmedChipText}>Fixed</Text>
                     </View>
-                    <TouchableOpacity onPress={() => handleRemoveConfirmedFixed(fi)}>
+                    <TouchableOpacity onPress={() => handleRemoveConfirmedFixed(fi)} style={{ padding: 8 }}>
                       <Text style={{ color: '#ef4444', fontSize: 16, fontWeight: '600' }}>✕</Text>
                     </TouchableOpacity>
                   </View>
