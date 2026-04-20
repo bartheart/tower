@@ -19,9 +19,9 @@ import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
 import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
-import { BudgetTreemap } from '../components/BudgetTreemap';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
+import { BudgetTreemap } from '../components/BudgetTreemap';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -793,10 +793,12 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   const allocatedTotal = budgets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
 
   const handleDragEnd = useCallback(async ({ data }: { data: typeof budgets }) => {
+    bucketYOffsets.current = {};
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await updateBucketRanks(data.map(b => b.id));
-    } catch {
+    } catch (err) {
+      console.error('[BucketsTab] updateBucketRanks failed', err);
       Alert.alert('Error', 'Could not save order. Try again.');
       onReload();
     }
@@ -809,27 +811,29 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
 
     return (
       <ScaleDecorator activeScale={1.04}>
-        <TouchableOpacity
-          style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted, isActive && s.bucketCardDragging]}
-          onPress={() => setDetailBudget(b)}
-          onLongPress={drag}
-          delayLongPress={400}
-          activeOpacity={0.75}
-          onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
-        >
-          <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
-          <View style={{ flex: 1 }}>
-            <View style={s.bucketCardRow}>
-              <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
-              <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
+        <View style={isActive ? s.bucketCardDraggingOuter : undefined}>
+          <TouchableOpacity
+            style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted, isActive && s.bucketCardDraggingInner]}
+            onPress={() => setDetailBudget(b)}
+            onLongPress={drag}
+            delayLongPress={400}
+            activeOpacity={0.75}
+            onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
+          >
+            <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
+            <View style={{ flex: 1 }}>
+              <View style={s.bucketCardRow}>
+                <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
+                <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
+              </View>
+              <Text style={s.bucketCardSub}>
+                {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
+                {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
+              </Text>
             </View>
-            <Text style={s.bucketCardSub}>
-              {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
-              {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
-            </Text>
-          </View>
-          <Text style={s.chevron}>›</Text>
-        </TouchableOpacity>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </ScaleDecorator>
     );
   }, [confirmedMonthlyIncome, highlightId, selectedTreemapId]);
@@ -1353,12 +1357,16 @@ const s = StyleSheet.create({
   // Bucket cards (planning)
   bucketCard: { backgroundColor: '#0d1526', borderRadius: 10, marginBottom: 8, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 12 },
   bucketCardHighlighted: { borderWidth: 1, borderColor: '#6366f1' },
-  bucketCardDragging: {
+  bucketCardDraggingOuter: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  bucketCardDraggingInner: {
     borderColor: 'rgba(99,102,241,0.6)',
     borderWidth: 1.5,
   },
