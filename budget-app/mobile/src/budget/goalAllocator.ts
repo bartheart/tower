@@ -219,23 +219,12 @@ export async function removeGoalAllocation(
   goalId: string,
   categories: BudgetCategory[]
 ): Promise<void> {
+  // Find the linked category for redistribution — may be absent if data is inconsistent,
+  // but we must still delete the goal from the DB in that case.
   const goalCat = categories.find(c => c.goalId === goalId);
-  if (!goalCat) return;
+  const freedPct = goalCat?.targetPct ?? 0;
 
-  const freedPct = goalCat.targetPct ?? 0;
-
-  const candidates = categories
-    .filter(c => !c.isGoal && (c.targetPct ?? 0) > 0)
-    .map(c => ({
-      id: c.id,
-      targetPct: c.targetPct ?? 0,
-      monthlyLimit: c.monthlyLimit,
-      spent: c.spent,
-      priorityRank: c.priorityRank,
-    }));
-
-  const redistributed = computeRedistribution(candidates, freedPct);
-
+  // Always delete the goal category and the goal row, regardless of whether goalCat was found.
   const { error: catDeleteError } = await supabase
     .from('budget_categories')
     .delete()
@@ -248,11 +237,25 @@ export async function removeGoalAllocation(
     .eq('id', goalId);
   if (goalDeleteError) throw goalDeleteError;
 
-  if (redistributed.length > 0) {
-    await Promise.all(
-      redistributed.map(r =>
-        supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
-      )
-    );
+  // Redistribute freed percentage back to non-goal buckets (only if there's something to give back).
+  if (freedPct > 0) {
+    const candidates = categories
+      .filter(c => !c.isGoal && (c.targetPct ?? 0) > 0)
+      .map(c => ({
+        id: c.id,
+        targetPct: c.targetPct ?? 0,
+        monthlyLimit: c.monthlyLimit,
+        spent: c.spent,
+        priorityRank: c.priorityRank,
+      }));
+
+    const redistributed = computeRedistribution(candidates, freedPct);
+    if (redistributed.length > 0) {
+      await Promise.all(
+        redistributed.map(r =>
+          supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
+        )
+      );
+    }
   }
 }

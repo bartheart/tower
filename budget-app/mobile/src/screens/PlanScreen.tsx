@@ -17,6 +17,7 @@ import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSou
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
 import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
+import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
 import { BudgetTreemap } from '../components/BudgetTreemap';
 
@@ -1074,8 +1075,12 @@ function GoalCard({
     Alert.alert(`Delete "${g.name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-          await removeGoalAllocation(g.id, budgets);
-          onDeleted();
+          try {
+            await removeGoalAllocation(g.id, budgets);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Failed to clean up goal budget');
+          }
+          onDeleted(); // always reload — goal is deleted from DB even if redistribution fails
         }
       },
     ]);
@@ -1223,7 +1228,7 @@ export default function PlanScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([reloadBudgets(), reloadIncome()]);
+    await Promise.all([syncAllItems(), reloadBudgets(), reloadIncome()]);
     setRefreshing(false);
   }, [reloadBudgets, reloadIncome]);
 
