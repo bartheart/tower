@@ -851,6 +851,9 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         <Text style={s.emptyHint}>No budgets yet. Add one below.</Text>
       ) : (
         <View>
+          {localOrder.length > 1 && (
+            <Text style={s.sortHint}>Hold ⠿ to pick a bucket, tap another to set its priority order.</Text>
+          )}
           {localOrder.map(b => {
             const pct = b.targetPct ?? 0;
             const allocationAmt = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome * pct / 100 : b.monthlyLimit;
@@ -1386,6 +1389,7 @@ const s = StyleSheet.create({
   segTextActive: { color: '#a5b4fc', fontWeight: '700' },
 
   emptyHint: { fontSize: 12, color: '#334155', textAlign: 'center', paddingVertical: 24 },
+  sortHint: { fontSize: 11, color: '#475569', marginBottom: 8, marginTop: 2 },
   txnEmpty: { fontSize: 11, color: '#334155', paddingVertical: 8 },
   barTrack: { backgroundColor: '#1e293b', borderRadius: 4, height: 4 },
   barFill: { height: 4, borderRadius: 4 },

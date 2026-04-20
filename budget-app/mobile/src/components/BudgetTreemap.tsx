@@ -34,11 +34,16 @@ export function BudgetTreemap({
   buckets,
   selectedId,
   onTilePress,
-  height = 175,
+  height,
 }: BudgetTreemapProps) {
   const [containerWidth, setContainerWidth] = useState(0);
 
   const totalAllocated = buckets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
+
+  // Scale height with bucket count so small tiles don't get squeezed out.
+  // Caller can override with an explicit height prop.
+  const activeBucketCount = buckets.filter(b => (b.targetPct ?? 0) > 0).length;
+  const treeHeight = height ?? Math.min(280, Math.max(160, 140 + activeBucketCount * 15));
   const unallocated = Math.max(0, 100 - totalAllocated);
 
   // Build items for squarify (only buckets with positive targetPct)
@@ -54,7 +59,7 @@ export function BudgetTreemap({
   // Always mounted with onLayout so containerWidth is set on first paint regardless
   // of whether buckets are loaded yet. Tiles render once containerWidth > 0.
   const rects = containerWidth > 0
-    ? computeLayout(squarifyItems, containerWidth, height)
+    ? computeLayout(squarifyItems, containerWidth, treeHeight)
     : [];
 
   // Build a quick lookup: id → bucket color
@@ -63,7 +68,7 @@ export function BudgetTreemap({
   return (
     <View
       testID="budget-treemap"
-      style={[styles.container, { height }]}
+      style={[styles.container, { height: treeHeight }]}
       onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
     >
       {allocatedItems.length === 0 && (
