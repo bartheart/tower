@@ -852,7 +852,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
       ) : (
         <View>
           {localOrder.length > 1 && (
-            <Text style={s.sortHint}>Hold ⠿ to pick a bucket, tap another to set its priority order.</Text>
+            <Text style={s.sortHint}>Hold ⠿ to prioritize where your money goes.</Text>
           )}
           {localOrder.map(b => {
             const pct = b.targetPct ?? 0;
