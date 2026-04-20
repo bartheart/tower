@@ -577,9 +577,13 @@ function BucketDetailSheet({
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await deleteBudgetWithRedistribution(budget.id, allBudgets);
-          onDeleted();
-          onClose();
+          try {
+            await deleteBudgetWithRedistribution(budget.id, allBudgets);
+            onDeleted();
+            onClose();
+          } catch (e: any) {
+            Alert.alert('Error deleting bucket', e.message);
+          }
         },
       },
     ]);
