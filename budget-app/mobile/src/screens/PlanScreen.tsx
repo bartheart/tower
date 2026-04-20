@@ -19,7 +19,7 @@ import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
 import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams, NestableDraggableFlatList, NestableScrollContainer } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import { BudgetTreemap } from '../components/BudgetTreemap';
 
@@ -869,12 +869,11 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
       {budgets.length === 0 ? (
         <Text style={s.emptyHint}>No budgets yet. Add one below.</Text>
       ) : (
-        <DraggableFlatList
+        <NestableDraggableFlatList
           data={budgets}
           keyExtractor={b => b.id}
           renderItem={renderBucketItem}
           onDragEnd={handleDragEnd}
-          scrollEnabled={false}
           activationDistance={5}
         />
       )}
@@ -1287,8 +1286,8 @@ export default function PlanScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView
-        ref={scrollRef}
+      <NestableScrollContainer
+        ref={scrollRef as any}
         style={s.container}
         contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
@@ -1330,7 +1329,7 @@ export default function PlanScreen() {
         )}
 
         <View style={{ height: 100 }} />
-      </ScrollView>
+      </NestableScrollContainer>
 
       {/* View Impact toast — appears after saving allocations */}
       {showViewImpact && (
