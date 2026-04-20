@@ -31,7 +31,7 @@ export function computeRedistribution(
 
   const withWeights = candidates.map(c => ({
     c,
-    weight: c.priorityRank != null ? 1 / c.priorityRank : 0,
+    weight: c.priorityRank != null && c.priorityRank > 0 ? 1 / c.priorityRank : 0,
   }));
 
   const totalWeight = withWeights.reduce((s, x) => s + x.weight, 0);

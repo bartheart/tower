@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useBudgets, createBudget, updateBudget, deleteBudget, deleteBudgetWithRedistribution, rebalanceBucketPct } from '../hooks/useBudgets';
+import { useBudgets, createBudget, updateBudget, deleteBudget, deleteBudgetWithRedistribution, rebalanceBucketPct, updateBucketRanks } from '../hooks/useBudgets';
 import type { BudgetCategory } from '../hooks/useBudgets';
 import { useGoals, type Goal } from '../hooks/useGoals';
 import { loadGoalEvents, GoalEvent, writeGoalEvent } from '../goals/goalEvents';
