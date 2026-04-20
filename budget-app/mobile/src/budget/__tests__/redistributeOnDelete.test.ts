@@ -78,3 +78,16 @@ test('equal ranks share freed pct equally', () => {
   expect(a.newPct).toBeCloseTo(25, 1);
   expect(b.newPct).toBeCloseTo(20, 1);
 });
+
+test('priorityRank of 0 is treated as unranked (guard against 1/0)', () => {
+  // a has rank 0 (invalid, treated as unranked), b has null — both fall into proportional fallback
+  const result = computeRedistribution([
+    { id: 'a', targetPct: 20, priorityRank: 0 },
+    { id: 'b', targetPct: 10, priorityRank: null },
+  ], 9);
+  // Both unranked → proportional fallback: a gets 2/3, b gets 1/3
+  const a = result.find(r => r.id === 'a')!;
+  const b = result.find(r => r.id === 'b')!;
+  expect(a.newPct).toBeCloseTo(20 + 9 * (20 / 30), 1);
+  expect(b.newPct).toBeCloseTo(10 + 9 * (10 / 30), 1);
+});

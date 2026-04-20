@@ -797,6 +797,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await updateBucketRanks(data.map(b => b.id));
+      onReload(); // re-fetch so list reflects persisted order
     } catch (err) {
       console.error('[BucketsTab] updateBucketRanks failed', err);
       Alert.alert('Error', 'Could not save order. Try again.');
