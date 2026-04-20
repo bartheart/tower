@@ -20,6 +20,8 @@ import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } fro
 import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
 import { BudgetTreemap } from '../components/BudgetTreemap';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import * as Haptics from 'expo-haptics';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -790,6 +792,48 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
 
   const allocatedTotal = budgets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
 
+  const handleDragEnd = useCallback(async ({ data }: { data: typeof budgets }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await updateBucketRanks(data.map(b => b.id));
+    } catch {
+      Alert.alert('Error', 'Could not save order. Try again.');
+      onReload();
+    }
+  }, [onReload]);
+
+  const renderBucketItem = useCallback(({ item: b, drag, isActive }: RenderItemParams<typeof budgets[number]>) => {
+    const pct = b.targetPct ?? 0;
+    const allocationAmt = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome * pct / 100 : b.monthlyLimit;
+    const isHighlighted = b.id === highlightId || b.id === selectedTreemapId;
+
+    return (
+      <ScaleDecorator activeScale={1.04}>
+        <TouchableOpacity
+          style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted, isActive && s.bucketCardDragging]}
+          onPress={() => setDetailBudget(b)}
+          onLongPress={drag}
+          delayLongPress={400}
+          activeOpacity={0.75}
+          onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
+        >
+          <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
+          <View style={{ flex: 1 }}>
+            <View style={s.bucketCardRow}>
+              <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
+              <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
+            </View>
+            <Text style={s.bucketCardSub}>
+              {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
+              {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
+            </Text>
+          </View>
+          <Text style={s.chevron}>›</Text>
+        </TouchableOpacity>
+      </ScaleDecorator>
+    );
+  }, [confirmedMonthlyIncome, highlightId, selectedTreemapId]);
+
   return (
     <View onLayout={e => { tabYOffset.current = e.nativeEvent.layout.y; }}>
       <BudgetTreemap
@@ -809,34 +853,15 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
       {budgets.length === 0 ? (
         <Text style={s.emptyHint}>No budgets yet. Add one below.</Text>
       ) : (
-        budgets.map(b => {
-          const pct = b.targetPct ?? 0;
-          const allocationAmt = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome * pct / 100 : b.monthlyLimit;
-          const isHighlighted = b.id === highlightId || b.id === selectedTreemapId;
-
-          return (
-            <TouchableOpacity
-              key={b.id}
-              style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted]}
-              onPress={() => setDetailBudget(b)}
-              activeOpacity={0.75}
-              onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
-            >
-              <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
-              <View style={{ flex: 1 }}>
-                <View style={s.bucketCardRow}>
-                  <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
-                  <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
-                </View>
-                <Text style={s.bucketCardSub}>
-                  {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
-                  {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
-                </Text>
-              </View>
-              <Text style={s.chevron}>›</Text>
-            </TouchableOpacity>
-          );
-        })
+        <DraggableFlatList
+          data={budgets}
+          keyExtractor={b => b.id}
+          renderItem={renderBucketItem}
+          onDragBegin={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+          onDragEnd={handleDragEnd}
+          scrollEnabled={false}
+          activationDistance={5}
+        />
       )}
 
       <View style={s.bucketFooter}>
@@ -1328,6 +1353,15 @@ const s = StyleSheet.create({
   // Bucket cards (planning)
   bucketCard: { backgroundColor: '#0d1526', borderRadius: 10, marginBottom: 8, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 12 },
   bucketCardHighlighted: { borderWidth: 1, borderColor: '#6366f1' },
+  bucketCardDragging: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+    borderColor: 'rgba(99,102,241,0.6)',
+    borderWidth: 1.5,
+  },
   bucketAccentBar: { width: 3, height: 36, borderRadius: 2, marginRight: 10 },
   bucketCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bucketCardName: { fontSize: 13, color: '#cbd5e1', fontWeight: '500' },
