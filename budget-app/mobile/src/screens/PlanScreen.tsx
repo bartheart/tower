@@ -17,7 +17,9 @@ import { useIncome, confirmIncomeSource, dismissIncomeSource, addManualIncomeSou
 import { useFixedItems, confirmFixedItem, dismissFixedItem, recomputeFloor } from '../hooks/useFixedItems';
 import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
+import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
+import { BudgetTreemap } from '../components/BudgetTreemap';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -752,16 +754,30 @@ function BucketDetailSheet({
 
 // ─── Buckets Tab ──────────────────────────────────────────────────────────────
 
-function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, highlightId }: {
+function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, highlightId, scrollRef }: {
   budgets: ReturnType<typeof useBudgets>['budgets'];
   transactions: Transaction[];
   confirmedMonthlyIncome: number;
   onReload: (savedBudgetId?: string) => void;
   highlightId?: string;
+  scrollRef: React.RefObject<ScrollView>;
 }) {
   const { items: fixedItems, pendingReview, reload: reloadFixed } = useFixedItems();
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [detailBudget, setDetailBudget] = useState<BudgetCategory | null>(null);
+  const [selectedTreemapId, setSelectedTreemapId] = useState<string | null>(null);
+  const bucketYOffsets = useRef<Record<string, number>>({});
+  const tabYOffset = useRef<number>(0);
+
+  const handleTilePress = useCallback((id: string | null) => {
+    setSelectedTreemapId(id);
+    if (id && bucketYOffsets.current[id] != null) {
+      scrollRef.current?.scrollTo({
+        y: tabYOffset.current + bucketYOffsets.current[id],
+        animated: true,
+      });
+    }
+  }, [scrollRef]);
 
   const fixedByCategory = useMemo(() => {
     const map = new Map<string, typeof fixedItems>();
@@ -775,7 +791,13 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
   const allocatedTotal = budgets.reduce((s, b) => s + (b.targetPct ?? 0), 0);
 
   return (
-    <View>
+    <View onLayout={e => { tabYOffset.current = e.nativeEvent.layout.y; }}>
+      <BudgetTreemap
+        buckets={budgets}
+        selectedId={selectedTreemapId}
+        onTilePress={handleTilePress}
+      />
+
       {pendingReview.length > 0 && (
         <View style={s.reviewBanner}>
           <Text style={s.reviewBannerText}>
@@ -790,7 +812,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
         budgets.map(b => {
           const pct = b.targetPct ?? 0;
           const allocationAmt = confirmedMonthlyIncome > 0 ? confirmedMonthlyIncome * pct / 100 : b.monthlyLimit;
-          const isHighlighted = b.id === highlightId;
+          const isHighlighted = b.id === highlightId || b.id === selectedTreemapId;
 
           return (
             <TouchableOpacity
@@ -798,6 +820,7 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
               style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted]}
               onPress={() => setDetailBudget(b)}
               activeOpacity={0.75}
+              onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
             >
               <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
               <View style={{ flex: 1 }}>
@@ -1052,8 +1075,12 @@ function GoalCard({
     Alert.alert(`Delete "${g.name}"?`, 'This will redistribute its budget allocation back to other buckets.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-          await removeGoalAllocation(g.id, budgets);
-          onDeleted();
+          try {
+            await removeGoalAllocation(g.id, budgets);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Failed to clean up goal budget');
+          }
+          onDeleted(); // always reload — goal is deleted from DB even if redistribution fails
         }
       },
     ]);
@@ -1192,6 +1219,7 @@ export default function PlanScreen() {
   const [planningTab, setPlanningTab] = useState<PlanningTab>('buckets');
   const [lastSavedBudgetId, setLastSavedBudgetId] = useState<string | undefined>(undefined);
   const [showViewImpact, setShowViewImpact] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Respond to navigation params — deep links from income tile, Report's Adjust Plan, etc.
   useEffect(() => {
@@ -1200,7 +1228,7 @@ export default function PlanScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([reloadBudgets(), reloadIncome()]);
+    await Promise.all([syncAllItems(), reloadBudgets(), reloadIncome()]);
     setRefreshing(false);
   }, [reloadBudgets, reloadIncome]);
 
@@ -1220,6 +1248,7 @@ export default function PlanScreen() {
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
+        ref={scrollRef}
         style={s.container}
         contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
@@ -1249,6 +1278,7 @@ export default function PlanScreen() {
             confirmedMonthlyIncome={confirmedMonthlyIncome}
             onReload={handleReload}
             highlightId={route.params?.highlightId}
+            scrollRef={scrollRef}
           />
         )}
         {planningTab === 'goals' && (
