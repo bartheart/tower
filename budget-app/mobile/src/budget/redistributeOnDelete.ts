@@ -1,8 +1,6 @@
 export interface RedistributionCandidate {
   id: string;
   targetPct: number;
-  monthlyLimit: number;
-  spent: number;
   priorityRank: number | null;
 }
 
@@ -12,15 +10,18 @@ export interface RedistributionResult {
 }
 
 /**
- * Distributes freedPct among candidates weighted by priority rank × ceiling proximity.
+ * Distributes freedPct among candidates weighted by priority rank.
  *
- * Weight formula per candidate:
- *   priorityScore = 1 / rank  (null rank → excluded, receives nothing)
- *   ceilingScore  = clamp(spent / monthlyLimit, 0, 1)
- *   weight        = priorityScore × ceilingScore
+ * Weight formula: weight = 1 / priorityRank  (rank 1 = highest priority)
+ * Candidates with null rank are excluded when any ranked candidate exists.
  *
- * Fallback when all weights = 0 (no spend data): use priority-only.
- * If still all zero (all unranked): return [] — freed % stays unallocated.
+ * Fallback when ALL candidates are unranked: distribute proportionally to
+ * existing targetPct so freed budget is never silently dropped.
+ * If all targetPct values are also 0: return [] (nothing to weight against).
+ *
+ * Note: spend ratio (ceilingScore) was intentionally removed — high spend
+ * does not imply a bucket should receive more budget during redistribution.
+ * See issue #44 for spend-based recommendations (separate feature).
  */
 export function computeRedistribution(
   candidates: RedistributionCandidate[],
@@ -28,29 +29,21 @@ export function computeRedistribution(
 ): RedistributionResult[] {
   if (freedPct <= 0 || candidates.length === 0) return [];
 
-  const withWeights = candidates.map(c => {
-    const priorityScore = c.priorityRank != null ? 1 / c.priorityRank : 0;
-    const ceilingScore = c.monthlyLimit > 0 ? Math.max(0, Math.min(1, c.spent / c.monthlyLimit)) : 0;
-    return { c, weight: priorityScore * ceilingScore };
-  });
+  const withWeights = candidates.map(c => ({
+    c,
+    weight: c.priorityRank != null ? 1 / c.priorityRank : 0,
+  }));
 
-  let totalWeight = withWeights.reduce((s, x) => s + x.weight, 0);
+  const totalWeight = withWeights.reduce((s, x) => s + x.weight, 0);
 
-  // Fallback: no spend data yet — use priority-only
   if (totalWeight === 0) {
-    const priorityOnly = candidates.map(c => ({
-      c,
-      weight: c.priorityRank != null ? 1 / c.priorityRank : 0,
+    // All unranked — distribute proportionally to existing targetPct
+    const totalPct = candidates.reduce((s, c) => s + c.targetPct, 0);
+    if (totalPct === 0) return [];
+    return candidates.map(c => ({
+      id: c.id,
+      newPct: Math.round((c.targetPct + freedPct * (c.targetPct / totalPct)) * 100) / 100,
     }));
-    totalWeight = priorityOnly.reduce((s, x) => s + x.weight, 0);
-    // All unranked — leave freed % as unallocated
-    if (totalWeight === 0) return [];
-    return priorityOnly
-      .filter(x => x.weight > 0)
-      .map(x => ({
-        id: x.c.id,
-        newPct: Math.round((x.c.targetPct + freedPct * (x.weight / totalWeight)) * 100) / 100,
-      }));
   }
 
   return withWeights

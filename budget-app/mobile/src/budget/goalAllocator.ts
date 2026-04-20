@@ -244,8 +244,6 @@ export async function removeGoalAllocation(
       .map(c => ({
         id: c.id,
         targetPct: c.targetPct ?? 0,
-        monthlyLimit: c.monthlyLimit,
-        spent: c.spent,
         priorityRank: c.priorityRank,
       }));
 
