@@ -41,12 +41,49 @@ export function useBudgets(transactions: Transaction[]): {
   const loadCategories = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
     const { data } = await supabase
       .from('budget_categories')
       .select('*')
       .eq('user_id', user.id)
-      .order('name');
-    if (data) setCategories(data);
+      .order('priority_rank', { ascending: true, nullsFirst: false });
+    if (!data) return;
+
+    // One-time rank initialization: if every row has null priority_rank,
+    // assign ranks 1…N ordered by created_at (oldest = highest priority).
+    const allNull = data.every(c => c.priority_rank == null);
+    if (allNull && data.length > 0) {
+      const { data: ordered } = await supabase
+        .from('budget_categories')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+      if (ordered) {
+        const results = await Promise.all(
+          ordered.map((row, index) =>
+            supabase
+              .from('budget_categories')
+              .update({ priority_rank: index + 1 })
+              .eq('id', row.id)
+          )
+        );
+        const writeError = results.find(r => r.error)?.error;
+        if (writeError) {
+          // Partial write — some ranks may not have been set.
+          // Fall through and reload so the user at least sees their data.
+          console.warn('[useBudgets] rank init partial failure', writeError);
+        }
+        // Reload now that ranks are set
+        const { data: ranked } = await supabase
+          .from('budget_categories')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('priority_rank', { ascending: true, nullsFirst: false });
+        if (ranked) { setCategories(ranked); return; }
+      }
+    }
+
+    setCategories(data);
   }, []);
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
@@ -81,7 +118,6 @@ export function useBudgets(transactions: Transaction[]): {
       spent: spendMap.get(cat.plaid_category ?? cat.name) ?? 0,
     }));
 
-    result.sort((a, b) => (b.spent / b.monthlyLimit) - (a.spent / a.monthlyLimit));
     return result;
   }, [categories, transactions]);
 
@@ -98,8 +134,19 @@ export async function createBudget(
 ): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
+
+  // New bucket always joins at the bottom (lowest priority).
+  const { data: existing } = await supabase
+    .from('budget_categories')
+    .select('priority_rank')
+    .eq('user_id', user.id)
+    .order('priority_rank', { ascending: false })
+    .limit(1);
+  const nextRank = (existing?.[0]?.priority_rank ?? 0) + 1;
+
   const row: Record<string, unknown> = {
-    user_id: user.id, name, emoji, monthly_limit: monthlyLimit, color,
+    user_id: user.id, name, emoji, monthly_limit: monthlyLimit,
+    color, priority_rank: nextRank,
   };
   if (plaidCategory) row.plaid_category = plaidCategory;
   if (targetPct != null) row.target_pct = targetPct;
@@ -211,8 +258,6 @@ export async function deleteBudgetWithRedistribution(
     .map(c => ({
       id: c.id,
       targetPct: c.targetPct ?? 0,
-      monthlyLimit: c.monthlyLimit,
-      spent: c.spent,
       priorityRank: c.priorityRank,
     }));
 
@@ -232,4 +277,21 @@ export async function deleteBudgetWithRedistribution(
       ),
     );
   }
+}
+
+/**
+ * Batch-update priority_rank for all buckets based on the new display order.
+ * Called after a drag-to-reorder gesture completes. Assigns rank 1…N.
+ */
+export async function updateBucketRanks(orderedIds: string[]): Promise<void> {
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from('budget_categories')
+        .update({ priority_rank: index + 1 })
+        .eq('id', id)
+    )
+  );
+  const failed = results.find(r => r.error);
+  if (failed) throw failed.error;
 }
