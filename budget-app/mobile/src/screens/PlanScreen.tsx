@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
-  ScrollView, View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
   RefreshControl, useWindowDimensions, ActivityIndicator, PanResponder,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useBudgets, createBudget, updateBudget, deleteBudget, deleteBudgetWithRedistribution, rebalanceBucketPct, updateBucketRanks } from '../hooks/useBudgets';
@@ -19,7 +20,7 @@ import type { FixedItem } from '../hooks/useFixedItems';
 import { previewGoalAllocation, commitGoalAllocation, removeGoalAllocation } from '../budget/goalAllocator';
 import { syncAllItems } from '../plaid/syncTransactions';
 import Transaction from '../db/models/Transaction';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams, NestableDraggableFlatList, NestableScrollContainer } from 'react-native-draggable-flatlist';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import { BudgetTreemap } from '../components/BudgetTreemap';
 
@@ -869,11 +870,12 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
       {budgets.length === 0 ? (
         <Text style={s.emptyHint}>No budgets yet. Add one below.</Text>
       ) : (
-        <NestableDraggableFlatList
+        <DraggableFlatList
           data={budgets}
           keyExtractor={b => b.id}
           renderItem={renderBucketItem}
           onDragEnd={handleDragEnd}
+          scrollEnabled={false}
           activationDistance={5}
         />
       )}
@@ -1286,8 +1288,8 @@ export default function PlanScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <NestableScrollContainer
-        ref={scrollRef as any}
+      <ScrollView
+        ref={scrollRef}
         style={s.container}
         contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
@@ -1329,7 +1331,7 @@ export default function PlanScreen() {
         )}
 
         <View style={{ height: 100 }} />
-      </NestableScrollContainer>
+      </ScrollView>
 
       {/* View Impact toast — appears after saving allocations */}
       {showViewImpact && (
