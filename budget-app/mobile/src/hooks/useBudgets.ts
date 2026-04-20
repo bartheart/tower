@@ -112,12 +112,6 @@ export function useBudgets(transactions: Transaction[]): {
       spent: spendMap.get(cat.plaid_category ?? cat.name) ?? 0,
     }));
 
-    result.sort((a, b) => {
-      if (a.priorityRank == null && b.priorityRank == null) return 0;
-      if (a.priorityRank == null) return 1;   // nulls last
-      if (b.priorityRank == null) return -1;
-      return a.priorityRank - b.priorityRank;
-    });
     return result;
   }, [categories, transactions]);
 
