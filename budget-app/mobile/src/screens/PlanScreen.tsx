@@ -813,27 +813,38 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
     return (
       <ScaleDecorator activeScale={1.04}>
         <View style={isActive ? s.bucketCardDraggingOuter : undefined}>
-          <TouchableOpacity
+          <View
             style={[s.bucketCard, isHighlighted && s.bucketCardHighlighted, isActive && s.bucketCardDraggingInner]}
-            onPress={() => setDetailBudget(b)}
-            onLongPress={drag}
-            delayLongPress={400}
-            activeOpacity={0.75}
             onLayout={e => { bucketYOffsets.current[b.id] = e.nativeEvent.layout.y; }}
           >
+            <TouchableOpacity
+              style={s.dragHandle}
+              onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); drag(); }}
+              delayLongPress={200}
+              activeOpacity={0.4}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            >
+              <Text style={s.dragHandleIcon}>⠿</Text>
+            </TouchableOpacity>
             <View style={[s.bucketAccentBar, { backgroundColor: b.color }]} />
-            <View style={{ flex: 1 }}>
-              <View style={s.bucketCardRow}>
-                <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
-                <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+              onPress={() => setDetailBudget(b)}
+              activeOpacity={0.75}
+            >
+              <View style={{ flex: 1 }}>
+                <View style={s.bucketCardRow}>
+                  <Text style={s.bucketCardName}>{b.name}{b.isGoal ? '  ·  Goal' : ''}</Text>
+                  <Text style={s.bucketPctDisplay}>{pct > 0 ? `${pct}%` : '—'}</Text>
+                </View>
+                <Text style={s.bucketCardSub}>
+                  {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
+                  {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
+                </Text>
               </View>
-              <Text style={s.bucketCardSub}>
-                {allocationAmt > 0 ? fmt(allocationAmt) : '—'}/mo
-                {b.monthlyFloor > 0 ? `  ·  floor ${fmt(b.monthlyFloor)}` : ''}
-              </Text>
-            </View>
-            <Text style={s.chevron}>›</Text>
-          </TouchableOpacity>
+              <Text style={s.chevron}>›</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScaleDecorator>
     );
@@ -862,7 +873,6 @@ function BucketsTab({ budgets, transactions, confirmedMonthlyIncome, onReload, h
           data={budgets}
           keyExtractor={b => b.id}
           renderItem={renderBucketItem}
-          onDragBegin={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
           onDragEnd={handleDragEnd}
           scrollEnabled={false}
           activationDistance={5}
@@ -1371,6 +1381,8 @@ const s = StyleSheet.create({
     borderColor: 'rgba(99,102,241,0.6)',
     borderWidth: 1.5,
   },
+  dragHandle: { paddingHorizontal: 6, paddingVertical: 4, marginRight: 6, justifyContent: 'center', alignItems: 'center' },
+  dragHandleIcon: { fontSize: 16, color: '#475569', lineHeight: 20 },
   bucketAccentBar: { width: 3, height: 36, borderRadius: 2, marginRight: 10 },
   bucketCardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bucketCardName: { fontSize: 13, color: '#cbd5e1', fontWeight: '500' },
