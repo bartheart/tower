@@ -59,7 +59,7 @@ export function useBudgets(transactions: Transaction[]): {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
       if (ordered) {
-        await Promise.all(
+        const results = await Promise.all(
           ordered.map((row, index) =>
             supabase
               .from('budget_categories')
@@ -67,6 +67,12 @@ export function useBudgets(transactions: Transaction[]): {
               .eq('id', row.id)
           )
         );
+        const writeError = results.find(r => r.error)?.error;
+        if (writeError) {
+          // Partial write — some ranks may not have been set.
+          // Fall through and reload so the user at least sees their data.
+          console.warn('[useBudgets] rank init partial failure', writeError);
+        }
         // Reload now that ranks are set
         const { data: ranked } = await supabase
           .from('budget_categories')
@@ -278,7 +284,7 @@ export async function deleteBudgetWithRedistribution(
  * Called after a drag-to-reorder gesture completes. Assigns rank 1…N.
  */
 export async function updateBucketRanks(orderedIds: string[]): Promise<void> {
-  await Promise.all(
+  const results = await Promise.all(
     orderedIds.map((id, index) =>
       supabase
         .from('budget_categories')
@@ -286,4 +292,6 @@ export async function updateBucketRanks(orderedIds: string[]): Promise<void> {
         .eq('id', id)
     )
   );
+  const failed = results.find(r => r.error);
+  if (failed) throw failed.error;
 }
