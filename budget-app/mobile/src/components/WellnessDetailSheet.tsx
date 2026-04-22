@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
-import Svg, { Polyline, Circle } from 'react-native-svg';
+import Svg, { Polyline, Circle, Text as SvgText } from 'react-native-svg';
 import { WellnessResult, ScoreFactor } from '../hooks/useWellnessScore';
 import Transaction from '../db/models/Transaction';
 
@@ -51,6 +51,15 @@ function ExpandedSparkline({ history, color }: { history: number[]; color: strin
           strokeLinejoin="round"
         />
         <Circle cx={lastX} cy={lastY} r={4} fill={color} />
+        <SvgText
+          x={lastX - 2}
+          y={lastY - 8}
+          fontSize={10}
+          fill={color}
+          textAnchor="end"
+        >
+          {history[history.length - 1]}
+        </SvgText>
       </Svg>
       <View style={s.dayRow}>
         {dayLabels.map((label, i) => (
@@ -110,8 +119,8 @@ function FactorRow({ factor, transactions }: { factor: ScoreFactor; transactions
         {topTxns.length > 0 && (
           <Text style={s.factorTxns} numberOfLines={1}>
             {topTxns
-              .map(t => `${t.merchantName ?? t.categoryL1} ${fmt(t.amount)}`)
-              .join('  ·  ')}
+              .map(t => `· ${t.merchantName ?? t.categoryL1} ${fmt(t.amount)}`)
+              .join('  ')}
           </Text>
         )}
       </View>
