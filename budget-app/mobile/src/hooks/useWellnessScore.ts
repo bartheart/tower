@@ -2,12 +2,26 @@ import { useMemo } from 'react';
 import Transaction from '../db/models/Transaction';
 import { BudgetCategory } from './useBudgets';
 
+export interface ScoreFactor {
+  categoryId: string;
+  name: string;
+  color: string;
+  targetPct: number;
+  targetSpend: number;
+  actualSpend: number;
+  ratio: number;
+  catScore: number;    // 0–100 integer
+  scoreDelta: number;  // always <= 0 — 0 means on-track, negative = over-budget cost
+                       // = round((catScore - 100) × (targetPct / totalAllocatedPct))
+}
+
 export interface WellnessResult {
   score: number;        // 0–100, integer
   history: number[];    // daily scores oldest-first, length = periodDays
   delta: number;        // today's score minus score 7 days ago (positive = improving)
   status: string;       // 'Excellent' | 'Good' | 'Fair' | 'At risk'
   statusColor: string;
+  factors: ScoreFactor[];  // sorted worst catScore first
 }
 
 export function computeStatus(score: number): { label: string; color: string } {
@@ -50,6 +64,44 @@ export function computeScore(
   }
 
   return Math.round((weightedSum / totalWeight) * 100);
+}
+
+/**
+ * Compute a breakdown of the wellness score by category, exposing per-category
+ * contributions to the global score.
+ */
+export function computeScoreBreakdown(
+  budgets: BudgetCategory[],
+  monthlyIncome: number
+): ScoreFactor[] {
+  if (monthlyIncome <= 0) return [];
+  const eligible = budgets.filter(b => b.targetPct != null && b.targetPct > 0);
+  if (eligible.length === 0) return [];
+
+  const totalAllocatedPct = eligible.reduce((s, b) => s + b.targetPct!, 0);
+
+  return eligible
+    .map(b => {
+      const pct = b.targetPct!;
+      const targetSpend = monthlyIncome * (pct / 100);
+      const ratio = targetSpend > 0 ? b.spent / targetSpend : 0;
+      const catScore = Math.round(
+        Math.max(0, Math.min(1, 1 - Math.max(0, ratio - 1))) * 100
+      );
+      const scoreDelta = Math.round((catScore - 100) * (pct / totalAllocatedPct));
+      return {
+        categoryId: b.id,
+        name: b.name,
+        color: b.color,
+        targetPct: pct,
+        targetSpend,
+        actualSpend: b.spent,
+        ratio,
+        catScore,
+        scoreDelta,
+      };
+    })
+    .sort((a, b) => a.catScore - b.catScore);
 }
 
 /**
@@ -97,6 +149,7 @@ export function useWellnessScore(
       : 0;
 
     const { label: status, color: statusColor } = computeStatus(score);
-    return { score, history, delta, status, statusColor };
+    const factors = computeScoreBreakdown(budgets, monthlyIncome);
+    return { score, history, delta, status, statusColor, factors };
   }, [transactions, budgets, monthlyIncome, periodDays]);
 }
