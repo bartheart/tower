@@ -21,16 +21,20 @@ function ExpandedSparkline({ history, color }: { history: number[]; color: strin
 
   const min = Math.min(...history);
   const max = Math.max(...history);
-  const range = max - min || 1;
+  const range = max - min;
 
   const points = history.map((v, i) => {
     const x = PAD + (i / (history.length - 1)) * (chartWidth - PAD * 2);
-    const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
+    const y = range === 0
+      ? H / 2
+      : PAD + (1 - (v - min) / range) * (H - PAD * 2);
     return `${x},${y}`;
   }).join(' ');
 
   const lastX = PAD + (chartWidth - PAD * 2);
-  const lastY = PAD + (1 - (history[history.length - 1] - min) / range) * (H - PAD * 2);
+  const lastY = range === 0
+    ? H / 2
+    : PAD + (1 - (history[history.length - 1] - min) / range) * (H - PAD * 2);
 
   const dayLabels = history.map((_, i) => {
     const offset = history.length - 1 - i;
@@ -109,7 +113,7 @@ function FactorRow({ factor, transactions }: { factor: ScoreFactor; transactions
               s.factorDeltaText,
               { color: isOnTrack ? '#475569' : '#ef4444' },
             ]}>
-              {isOnTrack ? 'on track' : `${factor.scoreDelta} pts`}
+              {isOnTrack ? 'on track' : `${factor.scoreDelta > 0 ? '+' : ''}${factor.scoreDelta} pts`}
             </Text>
           </View>
         </View>

@@ -113,4 +113,22 @@ describe('WellnessDetailSheet', () => {
     // Modal with visible=false renders nothing in test environment
     expect(queryByText('72')).toBeNull();
   });
+
+  it('shows top transaction merchant for over-budget category', () => {
+    const transactions = [
+      { merchantName: 'Cheesecake Factory', categoryL1: 'Dining', categoryL2: null, amount: 89, pending: false },
+      { merchantName: 'Uber Eats', categoryL1: 'Dining', categoryL2: null, amount: 34, pending: false },
+    ] as any[];
+
+    const { getByText } = render(
+      <WellnessDetailSheet
+        visible={true}
+        onClose={() => {}}
+        wellness={baseWellness}
+        transactions={transactions}
+      />
+    );
+    // Dining is over-budget (catScore 80) — should show top transaction
+    expect(getByText(/Cheesecake Factory/)).toBeTruthy();
+  });
 });
