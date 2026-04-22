@@ -11,7 +11,7 @@ export interface ScoreFactor {
   actualSpend: number;
   ratio: number;
   catScore: number;    // 0–100 integer
-  scoreDelta: number;  // global score points this category adds or costs
+  scoreDelta: number;  // always <= 0 — 0 means on-track, negative = over-budget cost
                        // = round((catScore - 100) × (targetPct / totalAllocatedPct))
 }
 

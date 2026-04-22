@@ -68,6 +68,10 @@ describe('computeScoreBreakdown', () => {
     expect(computeScoreBreakdown([makeBudget('Food', 15, 100)], 0)).toEqual([]);
   });
 
+  it('returns [] when monthlyIncome is negative', () => {
+    expect(computeScoreBreakdown([makeBudget('Food', 15, 100)], -1)).toEqual([]);
+  });
+
   it('returns [] when no categories have targetPct > 0', () => {
     const b: BudgetCategory = { ...makeBudget('Food', 0, 100), targetPct: null };
     expect(computeScoreBreakdown([b], 1000)).toEqual([]);
