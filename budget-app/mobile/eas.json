@@ -11,6 +11,32 @@
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb.apps.googleusercontent.com"
       }
     },
-    "production": {}
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "78330911812-bmn8k013imouifkil59k387hr7fsuu34.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb.apps.googleusercontent.com"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "78330911812-bmn8k013imouifkil59k387hr7fsuu34.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb.apps.googleusercontent.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "bemnetmerkebu17@gmail.com",
+        "ascAppId": "PLACEHOLDER_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "PLACEHOLDER_APPLE_TEAM_ID"
+      }
+    }
   }
 }

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Tower</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      line-height: 1.7;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #0f172a;
+      margin-bottom: 48px;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: #0f172a;
+      margin-bottom: 8px;
+    }
+    .updated {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 48px;
+    }
+    h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 40px 0 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    p { margin-bottom: 14px; color: #334155; font-size: 15px; }
+    ul { padding-left: 20px; margin-bottom: 14px; }
+    li { color: #334155; font-size: 15px; margin-bottom: 6px; }
+    a { color: #6366f1; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 48px 0;
+    }
+    .contact-block {
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 16px;
+    }
+    .contact-block p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">Tower</div>
+
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: April 25, 2026</p>
+
+    <p>Tower ("the app", "we", "us") is a personal finance application that connects to your bank accounts to help you track spending, manage budgets, and understand your financial health. This policy explains what data we collect, how we use it, and your rights.</p>
+
+    <hr class="divider" />
+
+    <h2>1. Data We Collect</h2>
+    <p>We collect only the data necessary to provide the service:</p>
+    <ul>
+      <li><strong>Account credentials</strong> — your email address and encrypted password, or your Apple/Google identity token if you sign in with Apple or Google.</li>
+      <li><strong>Bank account data</strong> — account names, balances, and transaction history retrieved via Plaid after you explicitly connect a bank account. This includes merchant names, amounts, dates, and Plaid-assigned categories.</li>
+      <li><strong>Budget data</strong> — budget categories, spending limits, savings goals, and income figures you enter manually in the app.</li>
+    </ul>
+    <p>We do not collect your location, contacts, photos, or any data unrelated to your financial management.</p>
+
+    <h2>2. How We Use Your Data</h2>
+    <p>Your data is used exclusively to provide Tower's features to you:</p>
+    <ul>
+      <li>Displaying your account balances and transaction history</li>
+      <li>Categorizing transactions against your budget buckets</li>
+      <li>Computing your financial wellness score</li>
+      <li>Detecting recurring income and fixed expenses</li>
+      <li>Tracking progress toward savings goals</li>
+    </ul>
+    <p>We do not sell your data, use it for advertising, or share it with any third party for purposes other than those listed below.</p>
+
+    <h2>3. Third-Party Services</h2>
+    <p>Tower uses the following third-party services to operate:</p>
+    <ul>
+      <li><strong>Plaid</strong> — connects to your bank and retrieves account and transaction data on your behalf. Plaid's privacy policy is available at <a href="https://plaid.com/legal/privacy-policy/" target="_blank">plaid.com/legal/privacy-policy</a>. By connecting a bank account, you also agree to Plaid's <a href="https://plaid.com/legal/end-user-privacy-policy/" target="_blank">End User Privacy Policy</a>.</li>
+      <li><strong>Supabase</strong> — stores your account credentials, budget data, and bank account metadata in an encrypted database hosted on AWS infrastructure in the United States. Plaid access tokens are stored in Supabase Vault, an encrypted secret store, and are never exposed to the client app.</li>
+      <li><strong>Apple / Google</strong> — if you use Sign in with Apple or Google Sign-In, your identity is authenticated through Apple or Google's servers. We receive only a user identifier and, optionally, your name and email.</li>
+    </ul>
+
+    <h2>4. Data Storage and Security</h2>
+    <ul>
+      <li>All data is transmitted over HTTPS/TLS 1.2 or higher.</li>
+      <li>All data is encrypted at rest in Supabase.</li>
+      <li>Bank access tokens (the credentials Plaid uses to retrieve your data) are stored in an isolated encrypted vault and are never readable by the client app or by any Tower employee.</li>
+      <li>Row-level security policies ensure your data is accessible only to your authenticated account — no other user can read your data.</li>
+    </ul>
+
+    <h2>5. Data Retention and Deletion</h2>
+    <p>Your data is retained for as long as your account is active. You may request deletion of your account and all associated data at any time by emailing us at the address below. Upon request, we will delete your account, budget data, and cached transaction data within 30 days. Bank connections will also be revoked via Plaid.</p>
+
+    <h2>6. Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul>
+      <li>Access the data we hold about you</li>
+      <li>Correct inaccurate data</li>
+      <li>Request deletion of your data</li>
+      <li>Disconnect any linked bank account at any time from the app's Settings screen</li>
+    </ul>
+
+    <h2>7. Children's Privacy</h2>
+    <p>Tower is not directed at children under 13. We do not knowingly collect data from children under 13. If you believe a child has provided us with personal information, please contact us and we will delete it.</p>
+
+    <h2>8. Changes to This Policy</h2>
+    <p>We may update this policy as the app evolves. Material changes will be communicated via an in-app notice. The "Last updated" date at the top of this page reflects the most recent revision.</p>
+
+    <h2>9. Contact</h2>
+    <div class="contact-block">
+      <p>For privacy questions, data requests, or account deletion, contact:<br />
+      <strong>Bemnet Merkebu</strong><br />
+      <a href="mailto:bemnetmerkebu17@gmail.com">bemnetmerkebu17@gmail.com</a></p>
+    </div>
+  </div>
+</body>
+</html>
