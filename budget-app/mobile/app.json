@@ -7,6 +7,8 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
+    "description": "Tower connects to your bank accounts and gives you a real-time financial wellness score — so you always know where your money is going and how to spend smarter.",
+    "privacy": "https://bartheart.github.io/tower/docs/privacy.html",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,8 +17,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.manicmonk.budget",
+      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Tower uses Face ID to keep your financial data secure.",
+        "NSCameraUsageDescription": "Tower uses the camera to scan checks and documents when linking your bank account.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -47,7 +52,8 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
