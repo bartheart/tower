@@ -17,7 +17,7 @@ import PlaidItem from '../db/models/PlaidItem';
 import { supabase } from '../supabase/client';
 
 // Lightweight hook — returns all PlaidItem records for the current user.
-function usePlaidItems(): PlaidItem[] {
+function usePlaidItems(refreshKey: number): PlaidItem[] {
   const [items, setItems] = useState<PlaidItem[]>([]);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ function usePlaidItems(): PlaidItem[] {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshKey]);
 
   return items;
 }
@@ -43,8 +43,9 @@ export default function SettingsScreen() {
   const [linking, setLinking] = useState(false);
   const [reconnectingItemId, setReconnectingItemId] = useState<string | null>(null);
   const [unlinkingItemId, setUnlinkingItemId] = useState<string | null>(null);
+  const [refreshCount, setRefreshCount] = useState(0);
   const { accounts, loading: accountsLoading } = useAccounts();
-  const plaidItems = usePlaidItems();
+  const plaidItems = usePlaidItems(refreshCount);
 
   // Group accounts by institution name
   const institutions = [...new Set(accounts.map(a => a.institutionName))];
@@ -102,6 +103,7 @@ export default function SettingsScreen() {
       Alert.alert('Error', `Could not clear error state: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setReconnectingItemId(null);
+      setRefreshCount(c => c + 1);
     }
   }, []);
 
@@ -176,6 +178,7 @@ export default function SettingsScreen() {
                   Alert.alert('Error', `Could not unlink: ${err instanceof Error ? err.message : String(err)}`);
                 } finally {
                   setUnlinkingItemId(null);
+                  setRefreshCount(c => c + 1);
                 }
               },
             },
