@@ -1,27 +1,65 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert, Linking, ActivityIndicator } from 'react-native';
+import {
+  ScrollView, View, Text, TouchableOpacity, StyleSheet,
+  Alert, Linking, ActivityIndicator, ActionSheetIOS,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create, open, LinkSuccess, LinkExit } from 'react-native-plaid-link-sdk';
-import { fetchLinkToken } from '../plaid/linkToken';
-import { exchangePublicToken } from '../plaid/exchangeToken';
 import { Q } from '@nozbe/watermelondb';
+import { useAuth } from '../auth/AuthContext';
+import { useAccounts } from '../hooks/useTransactions';
+import { fetchLinkToken, fetchUpdateLinkToken } from '../plaid/linkToken';
+import { exchangePublicToken } from '../plaid/exchangeToken';
+import { removePlaidItem } from '../plaid/removePlaidItem';
 import { syncTransactions } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
 import { supabase } from '../supabase/client';
-import { useAccounts } from '../hooks/useTransactions';
-import { useAuth } from '../auth/AuthContext';
+
+// Lightweight hook — returns all PlaidItem records for the current user.
+function usePlaidItems(): PlaidItem[] {
+  const [items, setItems] = useState<PlaidItem[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const result = await database.get<PlaidItem>('plaid_items')
+        .query(Q.where('user_id', user.id))
+        .fetch();
+      if (!cancelled) setItems(result);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  return items;
+}
 
 export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
   const { signOut } = useAuth();
   const [linking, setLinking] = useState(false);
+  const [reconnectingItemId, setReconnectingItemId] = useState<string | null>(null);
+  const [unlinkingItemId, setUnlinkingItemId] = useState<string | null>(null);
   const { accounts, loading: accountsLoading } = useAccounts();
+  const plaidItems = usePlaidItems();
 
+  // Group accounts by institution name
   const institutions = [...new Set(accounts.map(a => a.institutionName))];
 
+  // Returns whether any plaid_items row for this institution has has_error = true
+  function institutionHasError(institutionName: string): { hasError: boolean; itemId: string | null } {
+    const instAccounts = accounts.filter(a => a.institutionName === institutionName);
+    for (const acc of instAccounts) {
+      const item = plaidItems.find(i => i.itemId === acc.plaidItemId);
+      if (item?.hasError) return { hasError: true, itemId: item.itemId };
+    }
+    return { hasError: false, itemId: null };
+  }
+
   const handlePlaidSuccess = useCallback(async (success: LinkSuccess) => {
-    console.log('[Plaid] onSuccess fired, institution:', success.metadata.institution?.name);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -35,6 +73,7 @@ export default function SettingsScreen() {
           item.institutionId = success.metadata.institution?.id ?? '';
           item.institutionName = success.metadata.institution?.name ?? 'Bank';
           item.cursor = '';
+          item.hasError = false;
         });
       });
       const item = (await database.get<PlaidItem>('plaid_items')
@@ -48,20 +87,38 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  const handlePlaidExit = useCallback((exit: LinkExit) => {
-    console.log('[Plaid] onExit fired, status:', exit.metadata.status);
-    setLinking(false);
+  const handleReconnectSuccess = useCallback(async (success: LinkSuccess, itemId: string) => {
+    try {
+      await database.write(async () => {
+        const items = await database.get<PlaidItem>('plaid_items')
+          .query(Q.where('item_id', itemId))
+          .fetch();
+        for (const item of items) {
+          await item.update(i => { (i as PlaidItem).hasError = false; });
+        }
+      });
+      Alert.alert('Reconnected!', `${success.metadata.institution?.name ?? 'Account'} has been refreshed.`);
+    } catch (err) {
+      Alert.alert('Error', `Could not clear error state: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setReconnectingItemId(null);
+    }
   }, []);
 
-  // Handle OAuth redirect — bank app/Safari redirects back to tower://plaid-oauth
+  const handlePlaidExit = useCallback((_exit: LinkExit) => {
+    setLinking(false);
+    setReconnectingItemId(null);
+  }, []);
+
   useEffect(() => {
     const sub = Linking.addEventListener('url', ({ url }) => {
       if (url.startsWith('tower://plaid-oauth')) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         open({
           receivedRedirectUri: url,
           onSuccess: handlePlaidSuccess,
           onExit: handlePlaidExit,
-        });
+        } as any);
       }
     });
     return () => sub.remove();
@@ -72,15 +129,61 @@ export default function SettingsScreen() {
     try {
       const token = await fetchLinkToken();
       create({ token });
-      open({
-        onSuccess: handlePlaidSuccess,
-        onExit: handlePlaidExit,
-      });
+      open({ onSuccess: handlePlaidSuccess, onExit: handlePlaidExit });
     } catch (err) {
       Alert.alert('Error', `Bank linking failed: ${err instanceof Error ? err.message : String(err)}`);
       setLinking(false);
     }
   }, [handlePlaidSuccess, handlePlaidExit]);
+
+  const handleReconnect = useCallback(async (itemId: string) => {
+    setReconnectingItemId(itemId);
+    try {
+      const token = await fetchUpdateLinkToken(itemId);
+      create({ token });
+      open({
+        onSuccess: (success) => handleReconnectSuccess(success, itemId),
+        onExit: handlePlaidExit,
+      });
+    } catch (err) {
+      Alert.alert('Error', `Reconnect failed: ${err instanceof Error ? err.message : String(err)}`);
+      setReconnectingItemId(null);
+    }
+  }, [handleReconnectSuccess, handlePlaidExit]);
+
+  const handleLongPressAccount = useCallback((accountName: string, plaidItemId: string) => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [`Unlink ${accountName}`, 'Cancel'],
+        destructiveButtonIndex: 0,
+        cancelButtonIndex: 1,
+      },
+      async (buttonIndex) => {
+        if (buttonIndex !== 0) return;
+        Alert.alert(
+          'Unlink account?',
+          `This will disconnect ${accountName}. Your transaction history will be preserved.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Unlink',
+              style: 'destructive',
+              onPress: async () => {
+                setUnlinkingItemId(plaidItemId);
+                try {
+                  await removePlaidItem(plaidItemId);
+                } catch (err) {
+                  Alert.alert('Error', `Could not unlink: ${err instanceof Error ? err.message : String(err)}`);
+                } finally {
+                  setUnlinkingItemId(null);
+                }
+              },
+            },
+          ]
+        );
+      }
+    );
+  }, []);
 
   return (
     <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
@@ -94,21 +197,68 @@ export default function SettingsScreen() {
           <Text style={s.emptyHint}>Tap Add Account to connect your bank</Text>
         </View>
       ) : (
-        institutions.map(name => (
-          <View key={name} style={s.institutionCard}>
-            <View>
-              <Text style={s.institutionName}>{name}</Text>
-              <Text style={s.accountCount}>
-                {accounts.filter(a => a.institutionName === name).length} account
-                {accounts.filter(a => a.institutionName === name).length !== 1 ? 's' : ''}
-              </Text>
+        institutions.map(name => {
+          const { hasError, itemId: errorItemId } = institutionHasError(name);
+          const instAccounts = accounts.filter(a => a.institutionName === name);
+          const isReconnecting = reconnectingItemId === errorItemId;
+
+          return (
+            <View key={name} style={s.institutionCard}>
+              <View style={s.institutionHeader}>
+                <View style={s.institutionInfo}>
+                  <View style={s.nameRow}>
+                    {hasError && <View style={s.errorDot} />}
+                    <Text style={s.institutionName}>{name}</Text>
+                  </View>
+                  <Text style={s.accountCount}>
+                    {instAccounts.length} account{instAccounts.length !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+
+                {hasError && errorItemId ? (
+                  <TouchableOpacity
+                    style={[s.reconnectButton, isReconnecting && s.reconnectButtonDisabled]}
+                    onPress={() => handleReconnect(errorItemId)}
+                    disabled={isReconnecting}
+                  >
+                    <Text style={s.reconnectText}>
+                      {isReconnecting ? 'Reconnecting…' : 'Reconnect'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={s.syncStatus}>
+                    <Text style={s.syncDot}>●</Text>
+                    <Text style={s.syncLabel}>linked</Text>
+                  </View>
+                )}
+              </View>
+
+              {instAccounts.map(account => {
+                const isUnlinking = unlinkingItemId === account.plaidItemId;
+                return (
+                  <TouchableOpacity
+                    key={account.plaidAccountId}
+                    style={s.accountRow}
+                    onLongPress={() => handleLongPressAccount(account.name, account.plaidItemId)}
+                    disabled={isUnlinking}
+                  >
+                    <View>
+                      <Text style={s.accountName}>{account.name}</Text>
+                      <Text style={s.accountSubtype}>{account.subtype}</Text>
+                    </View>
+                    {isUnlinking ? (
+                      <ActivityIndicator size="small" color="#475569" />
+                    ) : (
+                      <Text style={s.accountBalance}>
+                        ${account.currentBalance.toFixed(2)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-            <View style={s.syncStatus}>
-              <Text style={s.syncDot}>●</Text>
-              <Text style={s.syncLabel}>linked</Text>
-            </View>
-          </View>
-        ))
+          );
+        })
       )}
 
       <TouchableOpacity style={s.addButton} onPress={handleAddAccount} disabled={linking}>
@@ -130,10 +280,35 @@ const s = StyleSheet.create({
   content: { padding: 16 },
   sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
   institutionCard: {
+    backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 8, overflow: 'hidden',
+  },
+  institutionHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#1e293b', borderRadius: 8, padding: 14, marginBottom: 8,
+    padding: 14,
+  },
+  institutionInfo: { flex: 1 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  errorDot: {
+    width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#ef4444',
   },
   institutionName: { fontSize: 14, color: '#f1f5f9' },
+  accountCount: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  reconnectButton: {
+    backgroundColor: '#ef4444', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  reconnectButtonDisabled: { backgroundColor: '#7f1d1d' },
+  reconnectText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  syncStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  syncDot: { fontSize: 8, color: '#22c55e' },
+  syncLabel: { fontSize: 11, color: '#475569' },
+  accountRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: '#0f172a',
+  },
+  accountName: { fontSize: 13, color: '#94a3b8' },
+  accountSubtype: { fontSize: 10, color: '#475569', marginTop: 1, textTransform: 'capitalize' },
+  accountBalance: { fontSize: 13, color: '#64748b' },
   addButton: {
     backgroundColor: '#6366f1', borderRadius: 8, padding: 14,
     alignItems: 'center', marginTop: 8,
@@ -142,10 +317,6 @@ const s = StyleSheet.create({
   emptyCard: { padding: 20, alignItems: 'center', marginBottom: 8 },
   emptyText: { fontSize: 13, color: '#475569', fontWeight: '500' },
   emptyHint: { fontSize: 11, color: '#334155', marginTop: 4 },
-  accountCount: { fontSize: 11, color: '#64748b', marginTop: 2 },
-  syncStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  syncDot: { fontSize: 8, color: '#22c55e' },
-  syncLabel: { fontSize: 11, color: '#475569' },
   signOutButton: { marginTop: 32, padding: 14, alignItems: 'center' },
   signOutText: { color: '#475569', fontSize: 14 },
 });
