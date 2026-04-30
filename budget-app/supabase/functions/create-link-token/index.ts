@@ -45,7 +45,8 @@ serve(async (req) => {
     await supabase
       .from('plaid_tokens')
       .update({ status: 'good' })
-      .eq('item_id', itemId);
+      .eq('item_id', itemId)
+      .eq('user_id', user.id);
   } else {
     // Normal mode: link a new item
     plaidBody.products = ['transactions'];
