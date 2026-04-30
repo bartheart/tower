@@ -28,10 +28,20 @@ serve(async (req) => {
       .update({ status: 'error' })
       .eq('item_id', itemId);
 
-    // Notify all registered devices; each device checks locally if it owns item_id
+    // Get the user who owns this item
+    const { data: tokenRow } = await supabase
+      .from('plaid_tokens')
+      .select('user_id')
+      .eq('item_id', itemId)
+      .single();
+
+    if (!tokenRow) return new Response('ok', { status: 200 });
+
+    // Get only that user's push token
     const { data: prefs } = await supabase
       .from('app_preferences')
       .select('expo_push_token')
+      .eq('user_id', tokenRow.user_id)
       .not('expo_push_token', 'is', null);
 
     if (prefs && prefs.length > 0) {
