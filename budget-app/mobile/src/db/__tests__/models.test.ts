@@ -71,4 +71,16 @@ describe('WatermelonDB models', () => {
     const accounts = await db.get<Account>('accounts').query().fetch();
     expect(accounts[0].currentBalance).toBe(5200.00);
   });
+
+  it('PlaidItem schema version is 3', () => {
+    expect(schema.version).toBe(3);
+  });
+
+  it('plaid_items table has has_error column', () => {
+    const plaidItemsTable = schema.tables['plaid_items'];
+    expect(plaidItemsTable).toBeDefined();
+    const col = plaidItemsTable.columns['has_error'];
+    expect(col).toBeDefined();
+    expect(col.type).toBe('boolean');
+  });
 });

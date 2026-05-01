@@ -11,4 +11,5 @@ export default class PlaidItem extends Model {
   @field('institution_name') institutionName!: string;
   @field('cursor') cursor!: string;
   @field('last_synced_at') lastSyncedAt!: number | undefined;
+  @field('has_error') hasError!: boolean;
 }
