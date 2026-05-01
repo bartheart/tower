@@ -23,5 +23,16 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    {
+      // v2 → v3: add has_error to plaid_items for local item error state.
+      // Existing items default to false (no error).
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: 'plaid_items',
+          columns: [{ name: 'has_error', type: 'boolean' }],
+        }),
+      ],
+    },
   ],
 });

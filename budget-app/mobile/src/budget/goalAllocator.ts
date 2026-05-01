@@ -249,11 +249,13 @@ export async function removeGoalAllocation(
 
     const redistributed = computeRedistribution(candidates, freedPct);
     if (redistributed.length > 0) {
-      await Promise.all(
+      const results = await Promise.all(
         redistributed.map(r =>
           supabase.from('budget_categories').update({ target_pct: r.newPct }).eq('id', r.id)
         )
       );
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
     }
   }
 }

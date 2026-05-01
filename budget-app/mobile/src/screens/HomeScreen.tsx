@@ -14,6 +14,7 @@ import { useBudgets, BudgetCategory } from '../hooks/useBudgets';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 import { useIncome } from '../hooks/useIncome';
 import Transaction from '../db/models/Transaction';
+import { WellnessDetailSheet } from '../components/WellnessDetailSheet';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -191,6 +192,7 @@ export default function HomeScreen() {
 
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showWellnessSheet, setShowWellnessSheet] = useState(false);
 
   const sorted = useMemo(
     () => [...transactions].sort((a, b) => b.date.localeCompare(a.date)),
@@ -251,14 +253,19 @@ export default function HomeScreen() {
         </View>
 
         {/* Wellness score tile — always visible, slightly smaller, sits above budget carousel */}
-        <ScoreTile
-          width={width - 32}
-          score={wellness.score}
-          history={wellness.history}
-          delta={wellness.delta}
-          status={wellness.status}
-          statusColor={wellness.statusColor}
-        />
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setShowWellnessSheet(true)}
+        >
+          <ScoreTile
+            width={width - 32}
+            score={wellness.score}
+            history={wellness.history}
+            delta={wellness.delta}
+            status={wellness.status}
+            statusColor={wellness.statusColor}
+          />
+        </TouchableOpacity>
 
         {/* Budget tile carousel — total + per-category, swipe left */}
         <Text style={s.carouselLabel}>MY BUDGETS · swipe →</Text>
@@ -354,6 +361,12 @@ export default function HomeScreen() {
       </ScrollView>
 
       <TxnDetailModal txn={selectedTxn} onClose={() => setSelectedTxn(null)} />
+      <WellnessDetailSheet
+        visible={showWellnessSheet}
+        onClose={() => setShowWellnessSheet(false)}
+        wellness={wellness}
+        transactions={transactions}
+      />
     </>
   );
 }

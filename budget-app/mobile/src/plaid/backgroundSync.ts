@@ -54,7 +54,7 @@ export function setupNotificationHandler() {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
       const type = notification.request.content.data?.type;
-      const show = type === 'budget_alert' || type === 'goal_at_risk';
+      const show = type === 'budget_alert' || type === 'goal_at_risk' || type === 'ITEM_ERROR';
       return {
         shouldShowBanner: show,
         shouldShowList: show,
@@ -65,12 +65,28 @@ export function setupNotificationHandler() {
   });
 
   return Notifications.addNotificationReceivedListener(async notification => {
-    const itemId = notification.request.content.data?.itemId as string | undefined;
+    const { type, itemId } = notification.request.content.data ?? {};
+
     if (!itemId) return;
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    if (type === 'ITEM_ERROR') {
+      // Mark the broken item locally so SettingsScreen can show the Reconnect UI
+      const items = await database.get<PlaidItem>('plaid_items')
+        .query(Q.where('user_id', user.id))
+        .fetch();
+      const item = items.find(i => i.itemId === itemId);
+      if (item) {
+        await database.write(async () => {
+          await item.update(i => { (i as PlaidItem).hasError = true; });
+        });
+      }
+      return;
+    }
+
+    // Default: sync transactions
     const items = await database.get<PlaidItem>('plaid_items')
       .query(Q.where('user_id', user.id))
       .fetch();
