@@ -47,9 +47,18 @@ serve(async (req) => {
     return new Response('Failed to store token', { status: 500 });
   }
 
-  // Return ONLY item_id — access_token stays on server
+  // Fetch accounts immediately — /transactions/sync returns empty accounts on brand-new
+  // production items until Plaid processes the item (can take seconds to minutes).
+  // /accounts/get is always available right after exchange.
+  const accountsRes = await fetch(`${plaidBaseUrl()}/accounts/get`, {
+    method: 'POST',
+    headers: plaidHeaders(),
+    body: JSON.stringify({ access_token }),
+  });
+  const accountsData = accountsRes.ok ? await accountsRes.json() : { accounts: [] };
+
   return new Response(
-    JSON.stringify({ item_id }),
+    JSON.stringify({ item_id, accounts: accountsData.accounts ?? [] }),
     { headers: { 'Content-Type': 'application/json' } }
   );
 });

@@ -1,7 +1,15 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
 
-export async function exchangePublicToken(publicToken: string): Promise<{ itemId: string }> {
+export interface PlaidAccount {
+  account_id: string;
+  name: string;
+  type: string;
+  subtype: string | null;
+  balances: { current: number | null; available: number | null } | null;
+}
+
+export async function exchangePublicToken(publicToken: string): Promise<{ itemId: string; accounts: PlaidAccount[] }> {
   // Refresh session — the Plaid flow can take minutes and the token may have expired
   const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
   if (refreshErr || !refreshed.session) {
@@ -18,5 +26,5 @@ export async function exchangePublicToken(publicToken: string): Promise<{ itemId
     }
     throw new Error(`exchange-public-token failed: ${error.message}`);
   }
-  return { itemId: data.item_id };
+  return { itemId: data.item_id, accounts: data.accounts ?? [] };
 }

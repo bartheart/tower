@@ -1,12 +1,28 @@
-# Plaid Update Mode & User Offboarding Implementation Plan
+# Plaid Update Mode, Offboarding & OAuth Redirect Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add two Plaid production-readiness features: re-authentication flow for broken connections (Update Mode) and individual account unlinking (User Offboarding).
+**Goal:** Three Plaid production-readiness features: (1) re-authentication flow for broken connections (Update Mode), (2) individual account unlinking (User Offboarding), (3) OAuth redirect relay for institutions like American Express that require HTTPS redirect URIs.
 
-**Architecture:** The webhook edge function detects `ITEM_LOGIN_REQUIRED` / `ITEM_ERROR` / `CONSENT_EXPIRED` events, stores a `status` flag in `plaid_tokens`, and sends a push notification to the client. The client persists error state locally in WatermelonDB (`has_error` on `plaid_items`). The Settings screen reads local state and shows a red "Reconnect" button; tapping it launches Plaid Link in update mode via a modified `create-link-token` edge function. For offboarding, a long-press on an account triggers an action sheet that calls a new `remove-plaid-item` edge function and cleans up local WatermelonDB records.
+**Architecture:** The webhook edge function detects `ITEM_LOGIN_REQUIRED` / `ITEM_ERROR` / `CONSENT_EXPIRED` events, stores a `status` flag in `plaid_tokens`, and sends a push notification to the client. The client persists error state locally in WatermelonDB (`has_error` on `plaid_items`). The Settings screen reads local state and shows a red "Reconnect" button; tapping it launches Plaid Link in update mode via a modified `create-link-token` edge function. For offboarding, a long-press on an account triggers an action sheet that calls a new `remove-plaid-item` edge function and cleans up local WatermelonDB records. For OAuth institutions, a `plaid-oauth-redirect` edge function acts as an HTTPS relay — Plaid redirects to it, and it immediately 302s to the `tower://plaid-oauth` deep link so the native Linking listener can resume Link.
 
 **Tech Stack:** Deno edge functions (Supabase), WatermelonDB v3 migration, React Native, Plaid Link SDK, expo-notifications, ActionSheetIOS
+
+---
+
+## Implementation Status
+
+| Task | Status |
+|------|--------|
+| Task 1: DB migration (`plaid_tokens.status`) | ✅ Done |
+| Task 2: WatermelonDB v3 (`has_error` on `plaid_items`) | ✅ Done |
+| Task 3: `plaid-webhook` — item error handling | ✅ Done |
+| Task 4: `create-link-token` — update mode + webhook URL | ✅ Done |
+| Task 5: `remove-plaid-item` edge function | ✅ Done |
+| Task 6: `fetchUpdateLinkToken` + `removePlaidItem` client helpers | ✅ Done |
+| Task 7: `backgroundSync` — ITEM_ERROR notification handling | ✅ Done |
+| Task 8: SettingsScreen — error state, reconnect, unlink | ✅ Done |
+| Task 9: OAuth redirect relay (`plaid-oauth-redirect`) | ✅ Done |
 
 ---
 
@@ -1287,6 +1303,58 @@ Verify the golden path:
 git add mobile/src/screens/SettingsScreen.tsx
 git commit -m "feat: SettingsScreen — error indicator, Reconnect flow, per-account rows, long-press unlink"
 ```
+
+---
+
+### Task 9: OAuth redirect relay — `plaid-oauth-redirect` edge function
+
+**Context:** Plaid's production dashboard only accepts `https://` redirect URIs. Native apps using custom URL schemes (`tower://`) need an HTTPS relay. This edge function acts as that relay — Plaid redirects to it after the user authenticates with an OAuth institution (e.g. American Express), and it immediately 302s to `tower://plaid-oauth` so the app's existing `Linking` listener can resume Link.
+
+**Files:**
+- Create: `supabase/functions/plaid-oauth-redirect/index.ts`
+- Modify: `mobile/src/screens/SettingsScreen.tsx` — pass `redirectUri` to both `create()` calls
+
+**Plaid dashboard:** Register `https://ejiqwzhpehtkyqnccode.supabase.co/functions/v1/plaid-oauth-redirect` as an allowed redirect URI under OAuth Institutions settings.
+
+- [x] **Step 1: Create the edge function**
+
+```typescript
+// supabase/functions/plaid-oauth-redirect/index.ts
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+
+serve((req) => {
+  const url = new URL(req.url);
+  const target = `tower://plaid-oauth${url.search}`;
+  return Response.redirect(target, 302);
+});
+```
+
+- [x] **Step 2: Deploy (no JWT verification — Plaid hits this without auth headers)**
+
+```bash
+supabase functions deploy plaid-oauth-redirect --no-verify-jwt
+```
+
+- [x] **Step 3: Pass `redirectUri` in `create()` calls in `SettingsScreen.tsx`**
+
+Both `handleAddAccount` and `handleReconnect` now call:
+```typescript
+create({ token, redirectUri: 'https://ejiqwzhpehtkyqnccode.supabase.co/functions/v1/plaid-oauth-redirect' });
+```
+
+The existing `Linking` listener at `tower://plaid-oauth` (already in the screen) handles the return:
+```typescript
+useEffect(() => {
+  const sub = Linking.addEventListener('url', ({ url }) => {
+    if (url.startsWith('tower://plaid-oauth')) {
+      open({ receivedRedirectUri: url, onSuccess: handlePlaidSuccess, onExit: handlePlaidExit });
+    }
+  });
+  return () => sub.remove();
+}, [handlePlaidSuccess, handlePlaidExit]);
+```
+
+The `tower://` scheme is registered in `app.json` (`scheme: "tower"` + `CFBundleURLSchemes`) — no additional iOS/Android config needed for Expo managed workflow.
 
 ---
 

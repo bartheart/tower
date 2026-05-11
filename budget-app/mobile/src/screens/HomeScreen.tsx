@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   ScrollView, View, Text, StyleSheet, useWindowDimensions,
   TouchableOpacity, Modal, FlatList, ActivityIndicator,
 } from 'react-native';
 import Svg, { Polyline, Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   useCurrentPeriodTransactions, useAccounts, useTotalBalance,
   useMonthlyIncome, useMonthlySpend, Period,
@@ -178,7 +178,8 @@ export default function HomeScreen() {
   const [period, setPeriod] = useState<Period>('month');
   const transactions = useCurrentPeriodTransactions(period);
   const { accounts, loading: accountsLoading } = useAccounts();
-  const { budgets } = useBudgets(transactions);
+  const { budgets, reload: reloadBudgets } = useBudgets(transactions);
+  useFocusEffect(useCallback(() => { reloadBudgets(); }, [reloadBudgets]));
   const { confirmedMonthlyIncome } = useIncome();
 
   const totalBalance = useTotalBalance(accounts);
