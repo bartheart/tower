@@ -9,11 +9,12 @@ import { Q } from '@nozbe/watermelondb';
 import { useAuth } from '../auth/AuthContext';
 import { useAccounts } from '../hooks/useTransactions';
 import { fetchLinkToken, fetchUpdateLinkToken } from '../plaid/linkToken';
-import { exchangePublicToken } from '../plaid/exchangeToken';
+import { exchangePublicToken, PlaidAccount } from '../plaid/exchangeToken';
 import { removePlaidItem } from '../plaid/removePlaidItem';
 import { syncTransactions } from '../plaid/syncTransactions';
 import { database } from '../db';
 import PlaidItem from '../db/models/PlaidItem';
+import Account from '../db/models/Account';
 import { supabase } from '../supabase/client';
 
 // Lightweight hook — returns all PlaidItem records for the current user.
@@ -65,22 +66,45 @@ export default function SettingsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { itemId } = await exchangePublicToken(success.publicToken);
+      const { itemId, accounts: freshAccounts }: { itemId: string; accounts: PlaidAccount[] } = await exchangePublicToken(success.publicToken);
+      const institutionName = success.metadata.institution?.name ?? 'Bank';
+
       await database.write(async () => {
+        // Write PlaidItem
         await database.get<PlaidItem>('plaid_items').create(item => {
           item.userId = user.id;
           item.itemId = itemId;
           item.accessToken = '';
           item.institutionId = success.metadata.institution?.id ?? '';
-          item.institutionName = success.metadata.institution?.name ?? 'Bank';
+          item.institutionName = institutionName;
           item.cursor = '';
           item.hasError = false;
         });
+
+        // Write accounts immediately from /accounts/get — don't wait for sync
+        // because /transactions/sync returns empty accounts on new production items
+        // until Plaid finishes processing the item.
+        for (const acc of freshAccounts) {
+          await database.get<Account>('accounts').create(a => {
+            a.userId = user.id;
+            a.plaidAccountId = acc.account_id;
+            a.plaidItemId = itemId;
+            a.name = acc.name;
+            a.type = acc.type;
+            a.subtype = acc.subtype ?? '';
+            a.currentBalance = acc.balances?.current ?? 0;
+            a.availableBalance = acc.balances?.available ?? 0;
+            a.institutionName = institutionName;
+          });
+        }
       });
+
+      // Sync transactions in background — webhook will also trigger this later
       const item = (await database.get<PlaidItem>('plaid_items')
         .query(Q.where('user_id', user.id)).fetch()).find(i => i.itemId === itemId)!;
-      await syncTransactions(item, user.id);
-      Alert.alert('Connected!', `${success.metadata.institution?.name} linked successfully.`);
+      syncTransactions(item, user.id).catch(e => console.warn('syncTransactions error:', e));
+
+      Alert.alert('Connected!', `${institutionName} linked successfully.`);
     } catch (err) {
       Alert.alert('Error', `Failed to connect account: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -130,7 +154,7 @@ export default function SettingsScreen() {
     setLinking(true);
     try {
       const token = await fetchLinkToken();
-      create({ token });
+      create({ token, redirectUri: 'https://ejiqwzhpehtkyqnccode.supabase.co/functions/v1/plaid-oauth-redirect' });
       open({ onSuccess: handlePlaidSuccess, onExit: handlePlaidExit });
     } catch (err) {
       Alert.alert('Error', `Bank linking failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -142,7 +166,7 @@ export default function SettingsScreen() {
     setReconnectingItemId(itemId);
     try {
       const token = await fetchUpdateLinkToken(itemId);
-      create({ token });
+      create({ token, redirectUri: 'https://ejiqwzhpehtkyqnccode.supabase.co/functions/v1/plaid-oauth-redirect' });
       open({
         onSuccess: (success) => handleReconnectSuccess(success, itemId),
         onExit: handlePlaidExit,

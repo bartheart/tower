@@ -24,6 +24,7 @@ serve(async (req) => {
     client_name: 'Tower',
     country_codes: ['US'],
     language: 'en',
+    webhook: `${Deno.env.get('SUPABASE_URL')}/functions/v1/plaid-webhook`,
   };
 
   if (itemId) {
