@@ -35,9 +35,13 @@ export default function PreferencesScreen() {
   }, []);
 
   async function saveCycleDay(day: number) {
+    const prev = cycleDay;
     setCycleDay(day);
     const { error } = await supabase.auth.updateUser({ data: { budget_cycle_start_day: day } });
-    if (error) Alert.alert('Error', error.message);
+    if (error) {
+      setCycleDay(prev);
+      Alert.alert('Error', error.message);
+    }
   }
 
   function handleCurrencyPress() {

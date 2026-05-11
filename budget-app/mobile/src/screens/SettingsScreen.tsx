@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../auth/AuthContext';
 import { supabase } from '../supabase/client';
 
@@ -13,19 +13,21 @@ export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const [meta, setMeta] = useState<UserMeta>({ displayName: '', email: '', initial: '?' });
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      const displayName =
-        (user.user_metadata?.display_name as string | undefined) ??
-        (user.email?.split('@')[0] ?? '?');
-      setMeta({
-        displayName,
-        email: user.email ?? '',
-        initial: displayName[0]?.toUpperCase() ?? '?',
+  useFocusEffect(
+    useCallback(() => {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        const displayName =
+          (user.user_metadata?.display_name as string | undefined) ??
+          (user.email?.split('@')[0] ?? '?');
+        setMeta({
+          displayName,
+          email: user.email ?? '',
+          initial: displayName[0]?.toUpperCase() ?? '?',
+        });
       });
-    });
-  }, []);
+    }, [])
+  );
 
   return (
     <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 24 }]}>
