@@ -10,6 +10,11 @@ import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import ReportScreen from './src/screens/ReportScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import LinkedAccountsScreen from './src/screens/LinkedAccountsScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import PreferencesScreen from './src/screens/PreferencesScreen';
+import AboutScreen from './src/screens/AboutScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import FloatingTabBar from './src/navigation/FloatingTabBar';
 import {
@@ -42,14 +47,12 @@ function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Tabs" component={TabNavigator} />
-      <Stack.Screen
-        name="Report"
-        component={ReportScreen}
-        options={{
-          animation: 'slide_from_right',
-          gestureEnabled: true,
-        }}
-      />
+      <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="LinkedAccounts" component={LinkedAccountsScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="Preferences" component={PreferencesScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <Stack.Screen name="About" component={AboutScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
     </Stack.Navigator>
   );
 }
