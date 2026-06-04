@@ -4,8 +4,8 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { authorize } from 'react-native-app-auth';
 import { getRandomBytes, digestStringAsync, CryptoDigestAlgorithm, CryptoEncoding } from 'expo-crypto';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = 'https://ejiqwzhpehtkyqnccode.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqaXF3emhwZWh0a3lxbmNjb2RlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODgwNDcsImV4cCI6MjA5MTQ2NDA0N30.cWX-8rcPcrhWN2-O8-CXNgfXb4_FS2HkBINUOayvA-s';
 
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
