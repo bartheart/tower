@@ -1,19 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { authorize } from 'react-native-app-auth';
 import { getRandomBytes, digestStringAsync, CryptoDigestAlgorithm, CryptoEncoding } from 'expo-crypto';
 
-const extra = Constants.expoConfig?.extra ?? {};
-const supabaseUrl: string =
-  (extra.supabaseUrl as string | undefined) ||
-  process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  '';
-const supabaseAnonKey: string =
-  (extra.supabaseAnonKey as string | undefined) ||
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
@@ -106,7 +98,7 @@ export async function signInWithGoogle(): Promise<void> {
     clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID!,
     redirectUrl: 'com.googleusercontent.apps.78330911812-pgerchhlsf6rk0a45jbqs6b8g3emulsb:/oauth2redirect/google',
     scopes: ['openid', 'profile', 'email'],
-    useNonce: false,          // disable library's auto-nonce — we manage it ourselves
+    useNonce: false,
     additionalParameters: {
       nonce: hashedNonce,
     },
