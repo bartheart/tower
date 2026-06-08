@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import HomeScreen from './src/screens/HomeScreen';
 import PlanScreen from './src/screens/PlanScreen';
-import ReportScreen from './src/screens/ReportScreen';
+import SpendScreen from './src/screens/SpendScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import LinkedAccountsScreen from './src/screens/LinkedAccountsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -17,16 +17,16 @@ import PreferencesScreen from './src/screens/PreferencesScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import FloatingTabBar from './src/navigation/FloatingTabBar';
+import { C } from './src/theme';
 import {
   registerPushToken,
   setupNotificationHandler,
   setupAppStateSync,
   syncStaleItems,
 } from './src/plaid/backgroundSync';
+
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
-
-// ─── Tab navigator (Home · Plan · Settings) ───────────────────────────────────
 
 function TabNavigator() {
   return (
@@ -35,19 +35,17 @@ function TabNavigator() {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Spend" component={SpendScreen} />
       <Tab.Screen name="Plan" component={PlanScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
 
-// ─── Root stack (Tabs + Report pushed on top) ─────────────────────────────────
-
 function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Tabs" component={TabNavigator} />
-      <Stack.Screen name="Report" component={ReportScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="LinkedAccounts" component={LinkedAccountsScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right', gestureEnabled: true }} />
@@ -56,8 +54,6 @@ function RootNavigator() {
     </Stack.Navigator>
   );
 }
-
-// ─── App shell ────────────────────────────────────────────────────────────────
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -76,8 +72,8 @@ function AppContent() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color="#6366f1" />
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.emerald} />
       </View>
     );
   }

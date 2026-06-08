@@ -4,6 +4,7 @@ import {
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
   RefreshControl, useWindowDimensions, ActivityIndicator, PanResponder,
 } from 'react-native';
+import { C, T } from '../theme';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import type { RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1251,7 +1252,7 @@ function GoalsTab({ budgets, confirmedMonthlyIncome, onReload }: {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-type PlanningTab = 'buckets' | 'goals' | 'income';
+type PlanningTab = 'buckets' | 'goals';
 
 export default function PlanScreen() {
   const { top } = useSafeAreaInsets();
@@ -1259,16 +1260,21 @@ export default function PlanScreen() {
   const route = useRoute<any>();
   const transactions = useCurrentPeriodTransactions('month');
   const { budgets, reload: reloadBudgets } = useBudgets(transactions);
-  const { confirmedMonthlyIncome, reload: reloadIncome } = useIncome();
+  const { sources, confirmedMonthlyIncome, reload: reloadIncome } = useIncome();
   const [refreshing, setRefreshing] = useState(false);
   const [planningTab, setPlanningTab] = useState<PlanningTab>('buckets');
+  const [incomeModalVisible, setIncomeModalVisible] = useState(false);
   const [lastSavedBudgetId, setLastSavedBudgetId] = useState<string | undefined>(undefined);
   const [showViewImpact, setShowViewImpact] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   // Respond to navigation params — deep links from income tile, Report's Adjust Plan, etc.
   useEffect(() => {
-    if (route.params?.planningTab) setPlanningTab(route.params.planningTab);
+    if (route.params?.planningTab === 'income') {
+      setIncomeModalVisible(true);
+    } else if (route.params?.planningTab) {
+      setPlanningTab(route.params.planningTab as PlanningTab);
+    }
   }, [route.params?.planningTab]);
 
   const handleRefresh = useCallback(async () => {
@@ -1287,7 +1293,7 @@ export default function PlanScreen() {
 
   const goToReport = () => {
     setShowViewImpact(false);
-    navigation.navigate('Report', { budgetId: lastSavedBudgetId, period: 'month' });
+    navigation.navigate('Tabs', { screen: 'Spend', params: { budgetId: lastSavedBudgetId, period: 'month' } });
   };
 
   return (
@@ -1296,11 +1302,27 @@ export default function PlanScreen() {
         ref={scrollRef}
         style={s.container}
         contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.emerald} />}
       >
-        {/* Three-tab segmented control — the only nav on this screen */}
-        <View style={s.segControl}>
-          {(['buckets', 'goals', 'income'] as PlanningTab[]).map(tab => (
+        {/* Income strip — tappable, opens modal */}
+        <TouchableOpacity
+          style={s.incomeStrip}
+          onPress={() => setIncomeModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <View>
+            <Text style={s.incomeStripLabel}>Monthly Income</Text>
+            <Text style={s.incomeStripVal}>{fmt(confirmedMonthlyIncome)}</Text>
+            <Text style={s.incomeStripSrcs}>
+              {sources.filter(src => src.isConfirmed).map(src => src.name).join(' · ') || 'No sources confirmed'}
+            </Text>
+          </View>
+          <Text style={s.incomeStripManage}>Manage ›</Text>
+        </TouchableOpacity>
+
+        {/* Buckets | Goals segment */}
+        <View style={s.segBar}>
+          {(['buckets', 'goals'] as PlanningTab[]).map(tab => (
             <TouchableOpacity
               key={tab}
               style={[s.segBtn, planningTab === tab && s.segBtnActive]}
@@ -1313,9 +1335,6 @@ export default function PlanScreen() {
           ))}
         </View>
 
-        {planningTab === 'income' && (
-          <IncomeTab onReload={() => handleReload()} />
-        )}
         {planningTab === 'buckets' && (
           <BucketsTab
             budgets={budgets}
@@ -1333,6 +1352,27 @@ export default function PlanScreen() {
             onReload={handleReload}
           />
         )}
+
+        {/* Income Modal */}
+        <Modal
+          visible={incomeModalVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setIncomeModalVisible(false)}
+        >
+          <View style={s.incomeModalWrap}>
+            <View style={s.incomeModalDrag} />
+            <Text style={s.incomeModalTitle}>Income Sources</Text>
+            <View style={s.incomeModalRule} />
+            <IncomeTab onReload={() => { handleReload(); }} />
+            <TouchableOpacity
+              style={s.incomeModalDone}
+              onPress={() => setIncomeModalVisible(false)}
+            >
+              <Text style={s.incomeModalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -1356,14 +1396,33 @@ export default function PlanScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16, paddingBottom: 100 },
+  container: { flex: 1, backgroundColor: C.bg },
+  content: { paddingBottom: 100 },
 
-  segControl: { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 8, padding: 3, marginBottom: 16 },
-  segBtn: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 6 },
-  segBtnActive: { backgroundColor: '#0f172a' },
-  segText: { fontSize: 12, color: '#475569', fontWeight: '500' },
-  segTextActive: { color: '#a5b4fc', fontWeight: '700' },
+  incomeStrip: {
+    paddingHorizontal: 20, paddingVertical: 11,
+    backgroundColor: C.emeraldBg,
+    borderTopWidth: 1, borderTopColor: C.emeraldBd,
+    borderBottomWidth: 1, borderBottomColor: C.emeraldBd,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  incomeStripLabel: { fontSize: 8.5, letterSpacing: 1.2, textTransform: 'uppercase', color: 'rgba(52,211,153,0.4)', marginBottom: 3 },
+  incomeStripVal: { fontSize: 20, fontWeight: '700', color: C.emerald, letterSpacing: -0.8, fontVariant: ['tabular-nums'] },
+  incomeStripSrcs: { fontSize: 10, color: 'rgba(52,211,153,0.35)', marginTop: 3 },
+  incomeStripManage: { fontSize: 9, color: 'rgba(52,211,153,0.3)' },
+
+  segBar: { flexDirection: 'row', margin: 12, marginBottom: 2, backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 8, padding: 3, gap: 2 },
+  segBtn: { flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: 'center' },
+  segBtnActive: { backgroundColor: C.s2 },
+  segText: { fontSize: 11, fontWeight: '500', color: C.w3 },
+  segTextActive: { color: C.w },
+
+  incomeModalWrap: { flex: 1, backgroundColor: C.bg, paddingTop: 8 },
+  incomeModalDrag: { width: 36, height: 4, backgroundColor: C.b2, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
+  incomeModalTitle: { fontSize: 15, fontWeight: '700', color: C.w, letterSpacing: -0.3, paddingHorizontal: 20, paddingBottom: 14 },
+  incomeModalRule: { height: 1, backgroundColor: C.b1 },
+  incomeModalDone: { padding: 16, borderTopWidth: 1, borderTopColor: C.b1, alignItems: 'center' },
+  incomeModalDoneText: { fontSize: 12, color: C.w4 },
 
   emptyHint: { fontSize: 12, color: '#334155', textAlign: 'center', paddingVertical: 24 },
   sortHint: { fontSize: 11, color: '#475569', marginBottom: 8, marginTop: 2 },

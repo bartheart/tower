@@ -17,6 +17,7 @@ import PlaidItem from '../db/models/PlaidItem';
 import Account from '../db/models/Account';
 import { supabase } from '../supabase/client';
 import { SUPABASE_OAUTH_REDIRECT_URL } from '../constants';
+import { C, T } from '../theme';
 
 // Lightweight hook — returns all PlaidItem records for the current user.
 function usePlaidItems(refreshKey: number): PlaidItem[] {
@@ -224,7 +225,7 @@ export default function LinkedAccountsScreen() {
       <Text style={s.sectionLabel}>LINKED ACCOUNTS</Text>
 
       {accountsLoading ? (
-        <ActivityIndicator color="#475569" style={{ marginVertical: 20 }} />
+        <ActivityIndicator color={C.w4} style={{ marginVertical: 20 }} />
       ) : institutions.length === 0 ? (
         <View style={s.emptyCard}>
           <Text style={s.emptyText}>No accounts linked yet</Text>
@@ -281,7 +282,7 @@ export default function LinkedAccountsScreen() {
                       <Text style={s.accountSubtype}>{account.subtype}</Text>
                     </View>
                     {isUnlinking ? (
-                      <ActivityIndicator size="small" color="#475569" />
+                      <ActivityIndicator size="small" color={C.w4} />
                     ) : (
                       <Text style={s.accountBalance}>
                         ${account.currentBalance.toFixed(2)}
@@ -303,49 +304,49 @@ export default function LinkedAccountsScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  backBtn: { marginRight: 12 },
-  backText: { fontSize: 17, color: '#6366f1' },
-  headerTitle: { flex: 1, fontSize: 17, color: '#f1f5f9', fontWeight: '600' },
-  sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
-  institutionCard: {
-    backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 8, overflow: 'hidden',
-  },
-  institutionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 14,
-  },
+  container: { flex: 1, backgroundColor: C.bg },
+  content: { paddingBottom: 60 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 8, marginBottom: 8 },
+  backBtn: { padding: 4 },
+  backText: { fontSize: 13, color: C.w3 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.w, letterSpacing: -0.4 },
+  sectionLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 10, paddingHorizontal: 14 },
+
+  // Institution cards
+  institutionCard: { marginHorizontal: 14, marginBottom: 10, backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12, overflow: 'hidden' },
+  institutionHeader: { paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.b1 },
   institutionInfo: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  errorDot: {
-    width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#ef4444',
-  },
-  institutionName: { fontSize: 14, color: '#f1f5f9' },
-  accountCount: { fontSize: 11, color: '#64748b', marginTop: 2 },
-  reconnectButton: {
-    backgroundColor: '#ef4444', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6,
-  },
-  reconnectButtonDisabled: { backgroundColor: '#7f1d1d' },
-  reconnectText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  errorDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.rose },
+  institutionName: { fontSize: 12, fontWeight: '600', color: C.w },
+  accountCount: { fontSize: 9, color: C.w4, letterSpacing: 0.4, marginTop: 1 },
+
+  // Reconnect button (rose/error state)
+  reconnectButton: { padding: 8, backgroundColor: C.roseBg, borderWidth: 1, borderColor: C.roseBd, borderRadius: 8, alignItems: 'center' },
+  reconnectButtonDisabled: { opacity: 0.5 },
+  reconnectText: { fontSize: 11, color: C.rose },
+
+  // Sync status
   syncStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  syncDot: { fontSize: 8, color: '#22c55e' },
-  syncLabel: { fontSize: 11, color: '#475569' },
-  accountRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 10,
-    borderTopWidth: 1, borderTopColor: '#0f172a',
-  },
-  accountName: { fontSize: 13, color: '#94a3b8' },
-  accountSubtype: { fontSize: 10, color: '#475569', marginTop: 1, textTransform: 'capitalize' },
-  accountBalance: { fontSize: 13, color: '#64748b' },
-  addButton: {
-    backgroundColor: '#6366f1', borderRadius: 8, padding: 14,
-    alignItems: 'center', marginTop: 8,
-  },
-  addButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  syncDot: { fontSize: 8, color: C.emerald },
+  syncLabel: { fontSize: 11, color: C.w4 },
+
+  // Account rows
+  accountRow: { paddingHorizontal: 13, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(31,31,40,0.4)' },
+  accountName: { fontSize: 10, color: C.w2 },
+  accountSubtype: { fontSize: 8.5, color: C.w4, marginTop: 1, textTransform: 'capitalize' },
+  accountBalance: { fontSize: 10, color: C.w4, fontVariant: ['tabular-nums'] },
+
+  // Add account button
+  addButton: { marginHorizontal: 14, marginTop: 4, padding: 11, borderWidth: 1, borderStyle: 'dashed', borderColor: C.b2, borderRadius: 10, alignItems: 'center' },
+  addButtonText: { fontSize: 11, color: C.w4 },
+
+  // Empty state
   emptyCard: { padding: 20, alignItems: 'center', marginBottom: 8 },
-  emptyText: { fontSize: 13, color: '#475569', fontWeight: '500' },
-  emptyHint: { fontSize: 11, color: '#334155', marginTop: 4 },
+  emptyText: { fontSize: 13, color: C.w4, fontWeight: '500' },
+  emptyHint: { fontSize: 11, color: C.w4, marginTop: 4, opacity: 0.6 },
+
+  // Loading
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  unlinkText: { fontSize: 12, color: C.rose },
 });

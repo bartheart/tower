@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../supabase/client';
+import { C, T } from '../theme';
 
 const CURRENCIES = [
   { code: 'USD', label: 'USD — $' },
@@ -68,17 +69,20 @@ export default function PreferencesScreen() {
   return (
     <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 16 }]}>
       <View style={s.headerRow}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={s.backText}>‹ Settings</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>Preferences</Text>
+        <View style={{ width: 70 }} />
       </View>
 
       {loading ? (
-        <ActivityIndicator color="#475569" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={C.w4} style={{ marginTop: 40 }} />
       ) : (
         <>
-          <Text style={s.sectionLabel}>BUDGET CYCLE</Text>
+          <View style={s.sectionWrap}>
+            <Text style={s.sectionLabel}>BUDGET CYCLE</Text>
+          </View>
           <View style={s.group}>
             <FlatList
               horizontal
@@ -99,11 +103,10 @@ export default function PreferencesScreen() {
             />
           </View>
 
-          <Text style={s.sectionLabel}>CURRENCY</Text>
           <View style={s.group}>
             <TouchableOpacity style={s.row} onPress={handleCurrencyPress}>
               <Text style={s.rowLabel}>{currentCurrencyLabel}</Text>
-              <Text style={s.chevron}>›</Text>
+              <Text style={s.rowValue}>›</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -113,26 +116,24 @@ export default function PreferencesScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  backBtn: { marginRight: 12 },
-  backText: { fontSize: 17, color: '#6366f1' },
-  headerTitle: { flex: 1, fontSize: 17, color: '#f1f5f9', fontWeight: '600' },
-  sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 6, marginLeft: 4 },
-  group: { backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 20 },
-  dayList: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  container: { flex: 1, backgroundColor: C.bg },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 8 },
+  backText: { fontSize: 13, color: C.w3 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.w, letterSpacing: -0.4 },
+  content: { paddingBottom: 60 },
+  sectionWrap: { paddingHorizontal: 20, marginTop: 16 },
+  sectionLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 8 },
+  dayList: { paddingVertical: 2 },
   dayItem: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 8, marginRight: 6,
+    backgroundColor: C.b1, alignItems: 'center', justifyContent: 'center',
   },
-  dayItemSelected: { backgroundColor: '#6366f1' },
-  dayText: { color: '#94a3b8', fontSize: 13 },
-  dayTextSelected: { color: '#fff', fontWeight: '600' },
-  row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14,
-  },
-  rowLabel: { flex: 1, color: '#f1f5f9', fontSize: 14 },
-  chevron: { color: '#475569', fontSize: 18 },
+  dayItemSelected: { backgroundColor: C.emerald, opacity: 0.85 },
+  dayText: { fontSize: 11, color: C.w3 },
+  dayTextSelected: { color: C.bg, fontWeight: '700' },
+  group: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12, overflow: 'hidden', marginHorizontal: 20, marginTop: 16 },
+  row: { paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rowLabel: { fontSize: 12, color: C.w2 },
+  rowValue: { fontSize: 12, color: C.w3 },
+  saving: { opacity: 0.5 },
 });

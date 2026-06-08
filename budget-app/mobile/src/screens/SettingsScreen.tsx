@@ -1,125 +1,111 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React from 'react';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../auth/AuthContext';
-import { supabase } from '../supabase/client';
-
-type UserMeta = { displayName: string; email: string; initial: string };
+import { C, T } from '../theme';
 
 export default function SettingsScreen() {
-  const { top } = useSafeAreaInsets();
-  const { signOut } = useAuth();
   const navigation = useNavigation<any>();
-  const [meta, setMeta] = useState<UserMeta>({ displayName: '', email: '', initial: '?' });
+  const { top } = useSafeAreaInsets();
+  const { signOut, user } = useAuth();
 
-  useFocusEffect(
-    useCallback(() => {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) return;
-        const displayName =
-          (user.user_metadata?.display_name as string | undefined) ??
-          (user.email?.split('@')[0] ?? '?');
-        setMeta({
-          displayName,
-          email: user.email ?? '',
-          initial: displayName[0]?.toUpperCase() ?? '?',
-        });
-      });
-    }, [])
-  );
+  const displayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? '—';
+  const email = user?.email ?? '—';
+  const initials = displayName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={[s.content, { paddingTop: top + 24 }]}>
-      <TouchableOpacity style={s.profileCard} onPress={() => navigation.navigate('Profile')}>
-        <View style={s.avatar}>
-          <Text style={s.avatarText}>{meta.initial}</Text>
-        </View>
-        <View style={s.profileInfo}>
-          <Text style={s.profileName} numberOfLines={1}>{meta.displayName}</Text>
-          <Text style={s.profileEmail} numberOfLines={1}>{meta.email}</Text>
+    <ScrollView style={s.container} contentContainerStyle={{ paddingTop: top + 8, paddingBottom: 60 }}>
+      <Text style={s.title}>Settings</Text>
+
+      {/* Profile strip */}
+      <TouchableOpacity style={s.profileStrip} onPress={() => navigation.navigate('Profile')} activeOpacity={0.7}>
+        <View style={s.monogram}><Text style={s.monogramText}>{initials}</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.profName}>{displayName}</Text>
+          <Text style={s.profEmail}>{email}</Text>
         </View>
         <Text style={s.chevron}>›</Text>
       </TouchableOpacity>
 
-      <Text style={s.sectionLabel}>ACCOUNTS</Text>
+      {/* Accounts group */}
       <View style={s.group}>
-        <Row icon="🏦" iconBg="#1d4ed8" label="Linked Accounts" onPress={() => navigation.navigate('LinkedAccounts')} />
+        <Text style={s.groupLabel}>Accounts</Text>
+        <View style={s.groupCard}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('LinkedAccounts')} activeOpacity={0.7}>
+            <Text style={s.rowLabel}>Linked Accounts</Text>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => navigation.navigate('Plan', { planningTab: 'income' })} activeOpacity={0.7}>
+            <Text style={s.rowLabel}>Income Sources</Text>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Text style={s.sectionLabel}>APP</Text>
+      {/* Preferences group */}
       <View style={s.group}>
-        <Row icon="🔔" iconBg="#0f766e" label="Notifications" onPress={() => navigation.navigate('Notifications')} border />
-        <Row icon="⚙️" iconBg="#7c3aed" label="Preferences" onPress={() => navigation.navigate('Preferences')} />
+        <Text style={s.groupLabel}>Preferences</Text>
+        <View style={s.groupCard}>
+          <TouchableOpacity style={s.row} onPress={() => navigation.navigate('Notifications')} activeOpacity={0.7}>
+            <Text style={s.rowLabel}>Notifications</Text>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => navigation.navigate('Preferences')} activeOpacity={0.7}>
+            <Text style={s.rowLabel}>Preferences</Text>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Text style={s.sectionLabel}>SUPPORT</Text>
+      {/* About group */}
       <View style={s.group}>
-        <Row icon="ℹ️" iconBg="#334155" label="About" onPress={() => navigation.navigate('About')} />
+        <Text style={s.groupLabel}>About</Text>
+        <View style={s.groupCard}>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => navigation.navigate('About')} activeOpacity={0.7}>
+            <Text style={s.rowLabel}>About Tower</Text>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <TouchableOpacity
-        style={s.signOutBtn}
-        onPress={() => signOut().catch(() => Alert.alert('Error', 'Could not sign out. Try again.'))}
-      >
+      <TouchableOpacity style={s.signOut} onPress={signOut} activeOpacity={0.7}>
         <Text style={s.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
-function Row({
-  icon, iconBg, label, onPress, border,
-}: {
-  icon: string; iconBg: string; label: string; onPress: () => void; border?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      style={[s.row, border && s.rowBorder]}
-      onPress={onPress}
-    >
-      <View style={[s.iconTile, { backgroundColor: iconBg }]}>
-        <Text style={s.iconText}>{icon}</Text>
-      </View>
-      <Text style={s.rowLabel}>{label}</Text>
-      <Text style={s.chevron}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16, paddingBottom: 40 },
+  container: { flex: 1, backgroundColor: C.bg },
+  title: { ...T.screenTitle, color: C.w, paddingHorizontal: 20, paddingBottom: 14 },
 
-  profileCard: {
-    backgroundColor: '#1e293b', borderRadius: 12, padding: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24,
+  profileStrip: {
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: C.b1,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
   },
-  avatar: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: '#6366f1',
+  monogram: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: C.s2, borderWidth: 1, borderColor: C.b2,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  profileInfo: { flex: 1 },
-  profileName: { color: '#f1f5f9', fontSize: 15, fontWeight: '600' },
-  profileEmail: { color: '#64748b', fontSize: 12, marginTop: 2 },
+  monogramText: { fontSize: 14, fontWeight: '700', color: C.emerald },
+  profName: { fontSize: 13, fontWeight: '600', color: C.w },
+  profEmail: { fontSize: 10, color: C.w4, marginTop: 1 },
 
-  sectionLabel: {
-    fontSize: 9, color: '#475569', letterSpacing: 1.5,
-    marginBottom: 6, marginLeft: 4,
-  },
-  group: { backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 20 },
-
+  group: { marginTop: 16, marginHorizontal: 20 },
+  groupLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 6, paddingHorizontal: 2 },
+  groupCard: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12, overflow: 'hidden' },
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderBottomWidth: 1, borderBottomColor: C.b1,
   },
-  rowBorder: { borderBottomWidth: 1, borderBottomColor: '#0f172a' },
-  iconTile: { width: 28, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  iconText: { fontSize: 14 },
-  rowLabel: { flex: 1, color: '#f1f5f9', fontSize: 14 },
-  chevron: { color: '#475569', fontSize: 18 },
+  rowLast: { borderBottomWidth: 0 },
+  rowLabel: { fontSize: 12, color: C.w2 },
+  chevron: { fontSize: 14, color: C.w4 },
 
-  signOutBtn: { marginTop: 12, padding: 14, alignItems: 'center' },
-  signOutText: { color: '#ef4444', fontSize: 14, fontWeight: '500' },
+  signOut: { marginTop: 20, paddingVertical: 10, alignItems: 'center' },
+  signOutText: { fontSize: 12, fontWeight: '500', color: C.rose, opacity: 0.65 },
 });

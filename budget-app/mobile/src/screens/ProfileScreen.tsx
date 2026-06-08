@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../supabase/client';
+import { C, T } from '../theme';
 
 export default function ProfileScreen() {
   const { top } = useSafeAreaInsets();
@@ -70,16 +71,16 @@ export default function ProfileScreen() {
       <View style={s.group}>
         <View style={s.fieldRow}>
           <Text style={s.fieldLabel}>DISPLAY NAME</Text>
-          <View style={s.inputRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TextInput
               style={s.input}
               value={displayName}
               onChangeText={setDisplayName}
               onBlur={handleSaveName}
-              placeholderTextColor="#475569"
+              placeholderTextColor={C.w4}
               returnKeyType="done"
             />
-            {saving && <ActivityIndicator size="small" color="#475569" style={s.inputSpinner} />}
+            {saving && <ActivityIndicator size="small" color={C.w4} style={{ marginLeft: 8 }} />}
           </View>
         </View>
 
@@ -91,12 +92,12 @@ export default function ProfileScreen() {
 
       {hasEmailProvider && (
         <TouchableOpacity
-          style={[s.passwordBtn, sendingReset && s.passwordBtnDisabled]}
+          style={[s.passwordBtn, sendingReset && s.saving]}
           onPress={handleChangePassword}
           disabled={sendingReset}
         >
           {sendingReset
-            ? <ActivityIndicator size="small" color="#fff" />
+            ? <ActivityIndicator size="small" color={C.w} />
             : <Text style={s.passwordBtnText}>Change Password</Text>}
         </TouchableOpacity>
       )}
@@ -105,26 +106,24 @@ export default function ProfileScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
-  backBtn: { marginRight: 12 },
-  backText: { fontSize: 17, color: '#6366f1' },
-  headerTitle: { flex: 1, fontSize: 17, color: '#f1f5f9', fontWeight: '600' },
+  container: { flex: 1, backgroundColor: C.bg },
+  content: { paddingHorizontal: 20, paddingBottom: 60 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, marginBottom: 4 },
+  backBtn: { padding: 4 },
+  backText: { fontSize: 13, color: C.w3 },
+  headerTitle: { ...T.screenTitle, color: C.w, fontSize: 17 },
 
-  group: { backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 16 },
-  fieldRow: { paddingHorizontal: 16, paddingVertical: 12 },
-  fieldBorder: { borderTopWidth: 1, borderTopColor: '#0f172a' },
-  fieldLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 6 },
-  inputRow: { flexDirection: 'row', alignItems: 'center' },
-  input: { flex: 1, color: '#f1f5f9', fontSize: 15, padding: 0 },
-  inputSpinner: { marginLeft: 8 },
-  fieldValue: { color: '#94a3b8', fontSize: 15 },
+  group: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12, overflow: 'hidden', marginBottom: 12 },
+  fieldRow: { paddingHorizontal: 14, paddingVertical: 10 },
+  fieldBorder: { borderTopWidth: 1, borderTopColor: C.b1 },
+  fieldLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 4 },
+  fieldValue: { fontSize: 12, color: C.w3 },
+  input: { fontSize: 12, color: C.w, padding: 0 },
 
   passwordBtn: {
-    backgroundColor: '#1e293b', borderRadius: 8, padding: 14,
-    alignItems: 'center',
+    backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12,
+    paddingVertical: 11, paddingHorizontal: 14, alignItems: 'center',
   },
-  passwordBtnDisabled: { opacity: 0.5 },
-  passwordBtnText: { color: '#f1f5f9', fontSize: 14, fontWeight: '500' },
+  passwordBtnText: { fontSize: 12, fontWeight: '500', color: C.emerald, opacity: 0.85 },
+  saving: { opacity: 0.5 },
 });

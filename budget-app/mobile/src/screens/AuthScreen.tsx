@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
 import { signInWithEmail, signUpWithEmail, signInWithApple, signInWithGoogle, supabase } from '../supabase/client';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { C, T } from '../theme';
 
 type Mode = 'signin' | 'signup';
 type Screen = 'form' | 'confirm_email';
@@ -32,7 +33,7 @@ function scorePassword(pw: string) {
   return { score: (3 - failures.length) as 0 | 1 | 2 | 3, failures };
 }
 
-const STRENGTH_COLORS = ['#ef4444', '#f59e0b', '#22c55e'];
+const STRENGTH_COLORS = [C.rose, C.amber, C.emerald];
 const STRENGTH_LABELS  = ['Weak', 'Fair', 'Strong'];
 
 // ─── Brand logos (SVG) ────────────────────────────────────────────────────────
@@ -236,7 +237,7 @@ export default function AuthScreen() {
           <TextInput
             style={s.input}
             placeholder="you@example.com"
-            placeholderTextColor="#334155"
+            placeholderTextColor={C.w4}
             value={email}
             onChangeText={v => { setEmail(v); setError(null); }}
             autoCapitalize="none"
@@ -255,7 +256,7 @@ export default function AuthScreen() {
               ref={passwordRef}
               style={[s.inputInner, error === 'Wrong password.' && s.inputError]}
               placeholder={isSignUp ? '8+ chars, uppercase, number/symbol' : ''}
-              placeholderTextColor="#334155"
+              placeholderTextColor={C.w4}
               value={password}
               onChangeText={v => { setPassword(v); setError(null); }}
               secureTextEntry={!showPw}
@@ -277,7 +278,7 @@ export default function AuthScreen() {
                   {[0, 1, 2].map(i => (
                     <View
                       key={i}
-                      style={[s.strengthSegment, { backgroundColor: i < score ? STRENGTH_COLORS[score - 1] : '#1e293b' }]}
+                      style={[s.strengthSegment, { backgroundColor: i < score ? STRENGTH_COLORS[score - 1] : C.b2 }]}
                     />
                   ))}
                 </View>
@@ -318,7 +319,7 @@ export default function AuthScreen() {
                   ref={confirmRef}
                   style={[s.inputInner, confirm.length > 0 && !passwordsMatch && s.inputError]}
                   placeholder="re-enter password"
-                  placeholderTextColor="#334155"
+                  placeholderTextColor={C.w4}
                   value={confirm}
                   onChangeText={v => { setConfirm(v); setError(null); }}
                   secureTextEntry={!showConfirmPw}
@@ -346,7 +347,7 @@ export default function AuthScreen() {
             testID="submit-button"
           >
             {loading
-              ? <ActivityIndicator color="#fff" size="small" />
+              ? <ActivityIndicator color={C.bg} size="small" />
               : <Text style={s.continueBtnText}>{isSignUp ? 'Create Account' : 'Continue'}</Text>
             }
           </TouchableOpacity>
@@ -413,62 +414,58 @@ export default function AuthScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0a0a14' },
-
-  container: {
-    flex: 1,
-    paddingHorizontal: 28,
-    justifyContent: 'space-between',
-  },
+  // Root / layout
+  root: { flex: 1, backgroundColor: C.bg },
+  container: { flex: 1, paddingHorizontal: 28, justifyContent: 'space-between' },
 
   // Wordmark
   wordmark: { marginTop: 32 },
-  appName:  { fontSize: 42, fontWeight: '300', color: '#f0f0f5', letterSpacing: -1 },
-  tagline:  { fontSize: 13, color: '#475569', marginTop: 4, letterSpacing: 0.2 },
+  appName: { fontSize: 42, fontWeight: '300', color: C.w, letterSpacing: -1 },
+  tagline: { fontSize: 13, color: C.w4, marginTop: 4, letterSpacing: 0.2 },
 
   form: { marginBottom: 8 },
 
   // Fields
-  fieldLabel: { fontSize: 13, color: '#94a3b8', fontWeight: '500', marginBottom: 8 },
+  fieldLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 8 },
 
   input: {
-    backgroundColor: '#0f1729',
+    backgroundColor: C.s1,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: C.b1,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    fontSize: 15,
-    color: '#f0f0f5',
+    fontSize: 13,
+    color: C.w,
   },
 
   // Input with eye toggle
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f1729',
+    backgroundColor: C.s1,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: C.b1,
     borderRadius: 10,
   },
   inputInner: {
     flex: 1,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    fontSize: 15,
-    color: '#f0f0f5',
+    fontSize: 13,
+    color: C.w,
   },
-  inputError: { borderColor: '#7f1d1d' },
-  eyeBtn:  { paddingHorizontal: 14, paddingVertical: 13 },
-  eyeIcon: { fontSize: 14, color: '#475569' },
+  inputError: { borderColor: C.roseBd },
+  eyeBtn: { paddingHorizontal: 14, paddingVertical: 13 },
+  eyeIcon: { fontSize: 14, color: C.w4 },
 
-  // Strength meter
-  strengthWrap:    { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },
-  strengthBar:     { flexDirection: 'row', gap: 4, flex: 1 },
-  strengthSegment: { flex: 1, height: 3, borderRadius: 2 },
-  strengthLabel:   { fontSize: 10, fontWeight: '600', width: 40 },
+  // Strength meter (segments)
+  strengthWrap: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },
+  strengthBar: { flexDirection: 'row', gap: 4, flex: 1 },
+  strengthSegment: { flex: 1, height: 2, borderRadius: 1, backgroundColor: C.b2 },
+  strengthLabel: { fontSize: 10, fontWeight: '600', width: 40 },
   requirementList: { marginTop: 6, gap: 2 },
-  requirementItem: { fontSize: 11, color: '#475569' },
+  requirementItem: { fontSize: 11, color: C.w4 },
 
   // Error + forgot row
   errorRow: {
@@ -479,69 +476,48 @@ const s = StyleSheet.create({
     marginBottom: 16,
     minHeight: 18,
   },
-  errorText:  { fontSize: 12, color: '#ef4444', flex: 1 },
-  forgotText: { fontSize: 12, color: '#6366f1', fontWeight: '500' },
+  errorText: { fontSize: 12, color: C.rose, flex: 1 },
+  forgotText: { fontSize: 12, color: C.emerald, fontWeight: '500', opacity: 0.85 },
 
   // Confirm mismatch
-  matchError: { fontSize: 11, color: '#ef4444', marginTop: 4, marginBottom: 4 },
+  matchError: { fontSize: 11, color: C.rose, marginTop: 4, marginBottom: 4 },
 
-  // Continue button
-  continueBtn: {
-    backgroundColor: '#4f46e5',
-    borderRadius: 10,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  continueBtnDisabled: { opacity: 0.4 },
-  continueBtnText: { color: '#fff', fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
+  // Continue / primary button
+  continueBtn: { backgroundColor: C.w, borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  continueBtnDisabled: { opacity: 0.35 },
+  continueBtnText: { fontSize: 13, fontWeight: '700', color: C.bg, letterSpacing: 0.1 },
 
   // Or divider
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-    gap: 10,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: '#1e293b' },
-  dividerText: { fontSize: 13, color: '#334155' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 14, gap: 10 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: C.b1 },
+  dividerText: { fontSize: 9, color: C.w4 },
 
   // Social buttons
   socialBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    borderRadius: 10,
-    paddingVertical: 13,
-    backgroundColor: '#0f1729',
+    backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 10,
+    paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8,
   },
-  socialBtnText: { fontSize: 14, color: '#cbd5e1', fontWeight: '500' },
+  socialBtnText: { fontSize: 12, color: C.w2, fontWeight: '500' },
   appleBtn: { height: 50, width: '100%' },
 
   // Switch mode
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  switchText: { fontSize: 13, color: '#475569' },
-  switchLink: { fontSize: 13, color: '#6366f1', fontWeight: '600' },
+  switchRow: { marginTop: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  switchText: { fontSize: 11, color: C.w4 },
+  switchLink: { fontSize: 11, color: C.emerald, opacity: 0.85, fontWeight: '600' },
 
   // Email confirmation screen
-  confirmRoot:  { justifyContent: 'center', alignItems: 'center', padding: 32 },
-  confirmIcon:  { fontSize: 52, marginBottom: 24 },
-  confirmTitle: { fontSize: 22, color: '#f0f0f5', fontWeight: '600', marginBottom: 16 },
-  confirmBody:  { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20 },
-  confirmEmail: { fontSize: 14, color: '#a5b4fc', fontWeight: '600', textAlign: 'center', marginTop: 4 },
+  confirmRoot: { justifyContent: 'center', alignItems: 'center', padding: 32 },
+  confirmIcon: { fontSize: 52, marginBottom: 24 },
+  confirmTitle: { fontSize: 22, fontWeight: '700', color: C.w, letterSpacing: -0.6, marginBottom: 8 },
+  confirmBody: { fontSize: 13, color: C.w3, textAlign: 'center', lineHeight: 20 },
+  confirmEmail: { fontSize: 13, color: C.emerald, fontWeight: '600', textAlign: 'center', marginTop: 4, opacity: 0.85 },
   openMailBtn: {
     marginTop: 32,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: C.b1,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 32,
   },
-  openMailText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
+  openMailText: { fontSize: 13, color: C.w3, fontWeight: '500' },
 });
