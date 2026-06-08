@@ -5,6 +5,7 @@ import {
 import Svg, { Polyline, Circle, Text as SvgText } from 'react-native-svg';
 import { WellnessResult, ScoreFactor } from '../hooks/useWellnessScore';
 import Transaction from '../db/models/Transaction';
+import { C, T } from '../theme';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -106,22 +107,22 @@ function FactorRow({ factor, transactions }: { factor: ScoreFactor; transactions
         <View style={s.factorTopLine}>
           <Text style={[s.factorName, isOnTrack && s.textMuted]}>{factor.name}</Text>
           <View style={s.factorRight}>
-            <Text style={[s.factorRatioPct, { color: factor.ratio > 1 ? '#ef4444' : '#64748b' }]}>
+            <Text style={[s.factorRatioPct, { color: factor.ratio > 1 ? C.rose : C.emerald }]}>
               {Math.round(factor.ratio * 100)}%
             </Text>
             <Text style={[
-              s.factorDeltaText,
-              { color: isOnTrack ? '#475569' : '#ef4444' },
+              s.factorAmount,
+              { color: isOnTrack ? C.w4 : C.rose },
             ]}>
               {isOnTrack ? 'on track' : `${factor.scoreDelta > 0 ? '+' : ''}${factor.scoreDelta} pts`}
             </Text>
           </View>
         </View>
-        <Text style={[s.factorSpend, isOnTrack && s.textMuted]}>
+        <Text style={[s.factorAmount, isOnTrack && s.textMuted]}>
           {fmt(factor.actualSpend)} / {fmt(factor.targetSpend)}
         </Text>
         {topTxns.length > 0 && (
-          <Text style={s.factorTxns} numberOfLines={1}>
+          <Text style={s.txnItem} numberOfLines={1}>
             {topTxns
               .map(t => `· ${t.merchantName ?? t.categoryL1} ${fmt(t.amount)}`)
               .join('  ')}
@@ -154,102 +155,85 @@ export function WellnessDetailSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={s.container}>
-        <View style={s.handle} />
+      <View style={s.overlay}>
+        <View style={s.sheet}>
+          <View style={s.drag} />
 
-        {/* Header */}
-        <View style={s.header}>
-          <Text style={s.headerLabel}>WELLNESS SCORE</Text>
-          <Text style={s.headerScore}>{wellness.score}</Text>
-          <Text style={[s.headerStatus, { color: wellness.statusColor }]}>
-            {wellness.status}
-          </Text>
-          <Text style={[
-            s.headerDelta,
-            { color: wellness.delta >= 0 ? '#4ade80' : '#ef4444' },
-          ]}>
-            {wellness.delta >= 0 ? '↑' : '↓'} {Math.abs(wellness.delta)} pts this week
-          </Text>
+          <ScrollView style={s.scroll}>
+            {/* Top row: score + close */}
+            <View style={s.topRow}>
+              <View>
+                <View style={s.scoreRow}>
+                  <Text style={s.score}>{wellness.score}</Text>
+                  <Text style={s.scoreDenom}> /100</Text>
+                </View>
+                <Text style={s.scoreStatus}>{wellness.status}</Text>
+              </View>
+              <TouchableOpacity style={s.closeBtn} onPress={onClose} activeOpacity={0.75}>
+                <Text style={s.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Sparkline */}
+            <View style={s.chartWrap}>
+              <ExpandedSparkline history={wellness.history} color={C.emerald} />
+            </View>
+
+            <View style={s.rule} />
+            <Text style={s.sectionLabel}>What's affecting your score</Text>
+
+            {/* Factor list */}
+            {wellness.factors.length === 0 ? (
+              <Text style={[s.factorAmount, { textAlign: 'center', paddingVertical: 24 }]}>
+                Set budget allocations on the Plan tab to see your score breakdown.
+              </Text>
+            ) : (
+              wellness.factors.map(factor => (
+                <FactorRow
+                  key={factor.categoryId}
+                  factor={factor}
+                  transactions={transactions}
+                />
+              ))
+            )}
+          </ScrollView>
         </View>
-
-        <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-          {/* Sparkline */}
-          <Text style={s.sectionTitle}>7-day trend</Text>
-          <View style={s.sparklineWrap}>
-            <ExpandedSparkline history={wellness.history} color={wellness.statusColor} />
-          </View>
-
-          {/* Factor list */}
-          <Text style={s.sectionTitle}>What's affecting your score</Text>
-          {wellness.factors.length === 0 ? (
-            <Text style={s.emptyHint}>
-              Set budget allocations on the Plan tab to see your score breakdown.
-            </Text>
-          ) : (
-            wellness.factors.map(factor => (
-              <FactorRow
-                key={factor.categoryId}
-                factor={factor}
-                transactions={transactions}
-              />
-            ))
-          )}
-        </ScrollView>
-
-        <TouchableOpacity style={s.closeBtn} onPress={onClose} activeOpacity={0.75}>
-          <Text style={s.closeBtnText}>Close</Text>
-        </TouchableOpacity>
       </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0f1e' },
-  handle: {
-    width: 40, height: 4, backgroundColor: '#334155', borderRadius: 2,
-    alignSelf: 'center', marginTop: 12, marginBottom: 8,
-  },
-  header: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 24 },
-  headerLabel: {
-    fontSize: 10, color: '#f59e0b', letterSpacing: 1.5, marginBottom: 8,
-  },
-  headerScore: { fontSize: 56, fontWeight: '800', color: '#e2e8f0', letterSpacing: -2 },
-  headerStatus: { fontSize: 14, fontWeight: '600', marginTop: 4 },
-  headerDelta: { fontSize: 13, marginTop: 6 },
+  overlay: { flex: 1, backgroundColor: 'rgba(9,9,12,0.9)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40, maxHeight: '85%' },
+  drag: { width: 36, height: 4, backgroundColor: C.b2, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+  scroll: { paddingHorizontal: 20 },
 
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 24 },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 12 },
+  scoreRow: { flexDirection: 'row', alignItems: 'baseline' },
+  score: { fontSize: 42, fontWeight: '700', color: C.emerald, letterSpacing: -2, lineHeight: 42, fontVariant: ['tabular-nums'] },
+  scoreDenom: { fontSize: 18, fontWeight: '300', color: C.w4 },
+  scoreStatus: { ...T.sectionLabel, color: C.w4, marginTop: 3 },
+  closeBtn: { padding: 8 },
+  closeText: { fontSize: 20, color: C.w4 },
 
-  sectionTitle: {
-    fontSize: 11, color: '#64748b', letterSpacing: 1, textTransform: 'uppercase',
-    marginTop: 20, marginBottom: 12,
-  },
-  sparklineWrap: { backgroundColor: '#0d1526', borderRadius: 10, padding: 12 },
-  dayRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  dayLabel: { fontSize: 9, color: '#475569' },
+  chartWrap: { marginBottom: 12 },
+  dayRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  dayLabel: { fontSize: 8, color: C.w4 },
 
-  factorRow: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#0d1526',
-  },
-  factorRowMuted: { opacity: 0.5 },
-  factorDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4, marginRight: 12 },
+  rule: { height: 1, backgroundColor: C.b1, marginBottom: 8 },
+  sectionLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 10 },
+
+  factorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(31,31,40,0.5)' },
+  factorRowMuted: { opacity: 0.4 },
+  factorDot: { width: 5, height: 5, borderRadius: 3, marginTop: 4 },
   factorContent: { flex: 1 },
   factorTopLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  factorName: { fontSize: 13, color: '#cbd5e1', fontWeight: '500' },
-  factorRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  factorRatioPct: { fontSize: 12, fontWeight: '600' },
-  factorDeltaText: { fontSize: 11, fontWeight: '500', minWidth: 56, textAlign: 'right' },
-  factorSpend: { fontSize: 11, color: '#475569', marginTop: 2 },
-  factorTxns: { fontSize: 10, color: '#334155', marginTop: 4 },
-  textMuted: { color: '#475569' },
-
-  emptyHint: { fontSize: 13, color: '#475569', textAlign: 'center', paddingVertical: 24 },
-
-  closeBtn: {
-    margin: 20, backgroundColor: '#1e293b', borderRadius: 10, paddingVertical: 14,
-    alignItems: 'center',
-  },
-  closeBtnText: { fontSize: 15, color: '#e2e8f0', fontWeight: '600' },
+  factorName: { fontSize: 12, color: C.w2 },
+  textMuted: { color: C.w4 },
+  factorRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  factorRatioPct: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  factorAmount: { fontSize: 11, color: C.w3, fontVariant: ['tabular-nums'] },
+  txnList: { marginTop: 4 },
+  txnItem: { fontSize: 10, color: C.w4, marginTop: 2 },
 });

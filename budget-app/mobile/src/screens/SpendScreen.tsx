@@ -13,6 +13,14 @@ import { buildSankeyData } from '../sankey/buildGraph';
 import Transaction from '../db/models/Transaction';
 import { C, T } from '../theme';
 
+const CAT_TINTS = [
+  'rgba(52,211,153,0.5)',   // emerald
+  'rgba(150,207,232,0.5)',  // sky
+  'rgba(240,168,168,0.5)',  // rose
+  'rgba(52,211,153,0.4)',   // emerald lighter
+  'rgba(232,200,122,0.5)',  // amber
+];
+
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
@@ -30,7 +38,7 @@ function BudgetReportRow({
 }) {
   const [expanded, setExpanded] = useState(autoExpand);
   const ratio = budget.monthlyLimit > 0 ? budget.spent / budget.monthlyLimit : 0;
-  const barColor = ratio > 1 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : budget.color;
+  const barColor = ratio > 1 ? C.rose : ratio > 0.7 ? C.amber : budget.color;
 
   const catTxns = useMemo(() =>
     transactions
@@ -51,7 +59,7 @@ function BudgetReportRow({
           </View>
         </View>
         <View style={s.reportRowRight}>
-          <Text style={[s.reportAmount, ratio > 1 && { color: '#ef4444' }]}>
+          <Text style={[s.reportAmount, ratio > 1 && { color: C.rose }]}>
             {fmt(budget.spent)}{ratio > 1 ? '  !' : ''}
           </Text>
           <Text style={s.chevronInline}>{expanded ? '  −' : '  +'}</Text>
@@ -147,7 +155,7 @@ export default function ReportScreen() {
     <View style={s.container}>
       <ScrollView
         contentContainerStyle={[s.content, { paddingTop: top + 16 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6366f1" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.emerald} />}
       >
         {/* Header */}
         <View style={s.headerRow}>
@@ -165,7 +173,7 @@ export default function ReportScreen() {
           <View style={s.summaryRow}>
             <View>
               <Text style={s.summaryLabel}>TOTAL SPENT</Text>
-              <Text style={[s.summaryValue, overallRatio > 1 && { color: '#ef4444' }]}>{fmt(totalSpent)}</Text>
+              <Text style={[s.summaryValue, overallRatio > 1 && { color: C.rose }]}>{fmt(totalSpent)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={s.summaryLabel}>BUDGET</Text>
@@ -177,7 +185,7 @@ export default function ReportScreen() {
               s.summaryBarFill,
               {
                 width: `${Math.min(overallRatio, 1) * 100}%`,
-                backgroundColor: overallRatio > 1 ? '#ef4444' : overallRatio > 0.8 ? '#f59e0b' : '#6366f1',
+                backgroundColor: overallRatio > 1 ? C.rose : overallRatio > 0.8 ? C.amber : C.emerald,
               },
             ]} />
           </View>
@@ -250,7 +258,64 @@ export default function ReportScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+  content: { paddingHorizontal: 16, paddingBottom: 40 },
   scroll: { flex: 1 },
+
+  // Header
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  backBtn: { padding: 4 },
+  backText: { fontSize: 13, color: C.w3 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.w, letterSpacing: -0.4 },
+  periodBadge: { fontSize: 10, color: C.w4 },
+
+  // Summary card
+  summaryCard: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 12, padding: 14, marginBottom: 16 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  summaryLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 3 },
+  summaryValue: { fontSize: 20, fontWeight: '700', color: C.w, letterSpacing: -0.8, ...T.tabular },
+  summaryBarTrack: { height: 3, backgroundColor: C.b2, borderRadius: 2, overflow: 'hidden', marginBottom: 8 },
+  summaryBarFill: { height: 3, borderRadius: 2 },
+  summaryIncome: { fontSize: 10, color: C.w4 },
+
+  // Section label
+  sectionLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 8 },
+
+  // Sankey container
+  sankeyContainer: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 10, padding: 8, marginBottom: 16, overflow: 'hidden' },
+  emptyHint: { fontSize: 11, color: C.w4, textAlign: 'center', paddingVertical: 20 },
+  zoomHint: { fontSize: 9, color: C.w4, textAlign: 'center', marginTop: 4 },
+
+  // Budget report rows
+  reportRow: { backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
+  reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12 },
+  reportRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  reportRowRight: { flexDirection: 'row', alignItems: 'center' },
+  colorDot: { width: 8, height: 8, borderRadius: 4 },
+  reportName: { fontSize: 13, color: C.w, fontWeight: '500' },
+  goalBadge: { fontSize: 9, color: C.emerald, letterSpacing: 0.5, marginTop: 2 },
+  reportAmount: { fontSize: 13, fontWeight: '600', color: C.w, ...T.tabular },
+  chevronInline: { fontSize: 13, color: C.w4 },
+  barTrackWrap: { height: 3, backgroundColor: C.b2, marginHorizontal: 12, borderRadius: 2, overflow: 'visible', position: 'relative', marginBottom: 4 },
+  barTrack: { height: 3, backgroundColor: C.b2, borderRadius: 2, overflow: 'hidden' },
+  barFill: { height: 3, borderRadius: 2 },
+  floorMarker: { position: 'absolute', top: -2, width: 1, height: 7, backgroundColor: C.w4 },
+  reportSub: { fontSize: 9, color: C.w4, paddingHorizontal: 12, paddingBottom: 8 },
+
+  // Transaction list inside expanded row
+  txnList: { borderTopWidth: 1, borderTopColor: C.b1 },
+  txnEmpty: { fontSize: 11, color: C.w4, padding: 12, textAlign: 'center' },
+  txnListRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: C.b1 },
+  txnListLeft: { flex: 1 },
+  txnListMerchant: { fontSize: 11, color: C.w2 },
+  txnListDate: { fontSize: 9, color: C.w4, marginTop: 1 },
+  txnListAmount: { fontSize: 11, fontWeight: '600', color: C.w, ...T.tabular },
+
+  // FAB
+  fabWrap: { position: 'absolute', left: 20, right: 20 },
+  fab: { backgroundColor: C.w, borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  fabText: { fontSize: 13, fontWeight: '700', color: C.bg, letterSpacing: 0.1 },
+
+  // Plan tokens (kept for any future use)
   topRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'flex-end', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14,
