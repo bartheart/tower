@@ -209,7 +209,7 @@ export default function HomeScreen() {
   const TILE_WIDTH = width;
 
   const goToReport = (budgetId?: string) =>
-    navigation.navigate('Report', { budgetId, period });
+    navigation.navigate('Spend', { budgetId, period });
   const goToIncome = () =>
     navigation.navigate('Tabs', { screen: 'Plan', params: { planningTab: 'income' } });
 

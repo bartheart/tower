@@ -1287,7 +1287,7 @@ export default function PlanScreen() {
 
   const goToReport = () => {
     setShowViewImpact(false);
-    navigation.navigate('Report', { budgetId: lastSavedBudgetId, period: 'month' });
+    navigation.navigate('Spend', { budgetId: lastSavedBudgetId, period: 'month' });
   };
 
   return (

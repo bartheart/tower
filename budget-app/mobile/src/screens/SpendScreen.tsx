@@ -11,6 +11,7 @@ import { useCurrentPeriodTransactions, useMonthlyIncome, Period } from '../hooks
 import SankeyChart from '../sankey/SankeyChart';
 import { buildSankeyData } from '../sankey/buildGraph';
 import Transaction from '../db/models/Transaction';
+import { C, T } from '../theme';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -154,7 +155,7 @@ export default function ReportScreen() {
             <Text style={s.backText}>‹ Back</Text>
           </TouchableOpacity>
           <Text style={s.headerTitle}>
-            {focusedBudget ? focusedBudget.name : 'Report'}
+            {focusedBudget ? focusedBudget.name : 'Spend'}
           </Text>
           <Text style={s.periodBadge}>{period === 'week' ? 'This Week' : 'This Month'}</Text>
         </View>
@@ -248,60 +249,38 @@ export default function ReportScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  content: { padding: 16, paddingBottom: 24 },
-
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  backBtn: { marginRight: 12 },
-  backText: { fontSize: 17, color: '#6366f1' },
-  headerTitle: { flex: 1, fontSize: 17, color: '#f1f5f9', fontWeight: '600' },
-  periodBadge: { fontSize: 10, color: '#475569', backgroundColor: '#1e293b', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
-
-  summaryCard: { backgroundColor: '#0d1526', borderRadius: 12, padding: 16, marginBottom: 20 },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  summaryLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5 },
-  summaryValue: { fontSize: 22, color: '#f1f5f9', fontWeight: '700', fontVariant: ['tabular-nums'] },
-  summaryBarTrack: { height: 5, backgroundColor: '#1e293b', borderRadius: 3 },
-  summaryBarFill: { height: 5, borderRadius: 3 },
-  summaryIncome: { fontSize: 10, color: '#475569', marginTop: 8 },
-
-  sectionLabel: { fontSize: 9, color: '#475569', letterSpacing: 1.5, marginBottom: 10 },
-  emptyHint: { fontSize: 12, color: '#334155', textAlign: 'center', paddingVertical: 24 },
-
-  sankeyContainer: { backgroundColor: '#0d1526', borderRadius: 10, padding: 8, marginBottom: 4, overflow: 'hidden' },
-  zoomHint: { fontSize: 9, color: '#334155', textAlign: 'right', marginTop: 4, marginRight: 4 },
-
-  reportRow: { marginBottom: 10, backgroundColor: '#0d1526', borderRadius: 10, padding: 14 },
-  reportRowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  reportRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
-  reportRowRight: { flexDirection: 'row', alignItems: 'center' },
-  colorDot: { width: 8, height: 8, borderRadius: 4 },
-  reportName: { fontSize: 13, color: '#cbd5e1', fontWeight: '500' },
-  goalBadge: { fontSize: 9, color: '#a5b4fc', marginTop: 1 },
-  reportAmount: { fontSize: 13, color: '#f1f5f9', fontVariant: ['tabular-nums'] },
-  chevronInline: { fontSize: 13, color: '#475569' },
-
-  barTrackWrap: { position: 'relative', marginBottom: 6 },
-  barTrack: { backgroundColor: '#1e293b', borderRadius: 4, height: 5 },
-  barFill: { height: 5, borderRadius: 4 },
-  floorMarker: { position: 'absolute', top: -2, width: 2, height: 9, backgroundColor: '#94a3b8', borderRadius: 1 },
-
-  reportSub: { fontSize: 10, color: '#475569', marginBottom: 4 },
-
-  txnList: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#1e293b', paddingTop: 8 },
-  txnEmpty: { fontSize: 11, color: '#334155', paddingVertical: 8 },
-  txnListRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 7 },
-  txnListLeft: { flex: 1 },
-  txnListMerchant: { fontSize: 12, color: '#94a3b8' },
-  txnListDate: { fontSize: 10, color: '#475569', marginTop: 1 },
-  txnListAmount: { fontSize: 12, color: '#cbd5e1', fontVariant: ['tabular-nums'] },
-
-  fabWrap: { position: 'absolute', left: 16, right: 16 },
-  fab: {
-    backgroundColor: '#6366f1', borderRadius: 12, padding: 16,
-    alignItems: 'center',
-    shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12,
-    elevation: 8,
+  container: { flex: 1, backgroundColor: C.bg },
+  scroll: { flex: 1 },
+  topRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-end', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14,
   },
-  fabText: { color: '#fff', fontWeight: '700', fontSize: 15, letterSpacing: 0.3 },
+  title: { ...T.screenTitle, color: C.w },
+  periodNav: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  periodLabel: { fontSize: 11, color: C.w3 },
+  periodArrow: { fontSize: 16, color: C.w4, paddingHorizontal: 2 },
+  heroRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14 },
+  heroCell: {},
+  heroLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 3 },
+  heroValue: { fontSize: 20, fontWeight: '700', color: C.w, letterSpacing: -0.8, ...T.tabular },
+  heroValuePos: { fontSize: 20, fontWeight: '700', color: C.emerald, letterSpacing: -0.8, ...T.tabular },
+  rule: { height: 1, backgroundColor: C.b1 },
+  sankey: {
+    margin: 20, marginBottom: 12, padding: 12,
+    backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1, borderRadius: 10,
+  },
+  sankeyLabel: { ...T.sectionLabel, color: C.w4, marginBottom: 10 },
+  secStrip: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
+  catItem: { paddingHorizontal: 20, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.b1 },
+  catTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 },
+  catName: { fontSize: 11, color: C.w2 },
+  catNums: { fontSize: 10, color: C.w3, ...T.tabular },
+  catNumsWarn: { fontSize: 10, color: C.rose, ...T.tabular },
+  catTrack: { height: 1.5, backgroundColor: C.b2, borderRadius: 1, overflow: 'hidden' },
+  adjustBtn: {
+    margin: 20, padding: 12, borderRadius: 10,
+    backgroundColor: C.s1, borderWidth: 1, borderColor: C.b1,
+    alignItems: 'center',
+  },
+  adjustBtnText: { fontSize: 13, fontWeight: '600', color: C.w2 },
 });

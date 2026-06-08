@@ -1,6 +1,7 @@
+// mobile/src/navigation/types.ts
 export type RootStackParamList = {
   Tabs: undefined;
-  Report: { budgetId?: string; period?: string };
+  Spend: { budgetId?: string; period?: string };
   LinkedAccounts: undefined;
   Profile: undefined;
   Notifications: undefined;
