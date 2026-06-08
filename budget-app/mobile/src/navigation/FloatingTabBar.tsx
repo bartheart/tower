@@ -26,6 +26,14 @@ function PlanIcon({ active }: { active: boolean }) {
   );
 }
 
+function SpendIcon({ active }: { active: boolean }) {
+  return (
+    <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24" fill="none" opacity={active ? 0.9 : 0.22}>
+      <Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" {...STROKE} />
+    </Svg>
+  );
+}
+
 function SettingsIcon({ active }: { active: boolean }) {
   return (
     <Svg width={ICON_SIZE} height={ICON_SIZE} viewBox="0 0 24 24" fill="none" opacity={active ? 0.9 : 0.22}>
@@ -37,13 +45,13 @@ function SettingsIcon({ active }: { active: boolean }) {
 
 const ICONS: Record<string, (active: boolean) => React.ReactElement> = {
   Home:     (a) => <HomeIcon active={a} />,
+  Spend:    (a) => <SpendIcon active={a} />,
   Plan:     (a) => <PlanIcon active={a} />,
   Settings: (a) => <SettingsIcon active={a} />,
 };
-// Spend is pushed as a stack screen, not a tab — no icon needed for it here.
 
 const LABELS: Record<string, string> = {
-  Home: 'Home', Plan: 'Plan', Settings: 'Settings',
+  Home: 'Home', Spend: 'Spend', Plan: 'Plan', Settings: 'Settings',
 };
 
 export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {

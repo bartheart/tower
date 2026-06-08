@@ -89,7 +89,7 @@ export default function HomeScreen() {
   const displayedTxns = showAllTxns ? sorted : sorted.slice(0, 8);
 
   const goToReport = (budgetId?: string) =>
-    navigation.navigate('Spend', { budgetId, period });
+    navigation.navigate('Tabs', { screen: 'Spend', params: { budgetId, period } });
   const goToIncome = () =>
     navigation.navigate('Tabs', { screen: 'Plan', params: { planningTab: 'income' } });
 
